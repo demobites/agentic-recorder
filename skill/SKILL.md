@@ -53,7 +53,7 @@ Look for `.recorder/config.json` next to the project. If it exists, use it and a
 - **app**: the product's name as it should appear in titles.
 - **url**: the starting URL of the flow.
 - **frame**: fixed at 1920x1080 for now, do not ask, just record it.
-- **base**: defaults to `https://dev.demobites.com`, only ask if the human mentions a different environment.
+- **base**: defaults to `https://app.demobites.com`, only ask if the human mentions a different environment.
 
 Write the answers to `.recorder/config.json` and never ask again:
 
@@ -62,7 +62,7 @@ Write the answers to `.recorder/config.json` and never ask again:
   "app": "Acme",
   "url": "https://app.acme.com",
   "frame": { "width": 1920, "height": 1080 },
-  "base": "https://dev.demobites.com"
+  "base": "https://app.demobites.com"
 }
 ```
 
@@ -279,7 +279,7 @@ GET <base>/api/recorder/status?biteId=<id>  (Authorization: Bearer <api_key>)
   -> { status, title, durationSec, zooms, narrationTotal, narrationReady, transcription }
 ```
 
-The upload zip contains exactly one file: `clean.mp4` stored as `recording.mp4`. Nothing else goes in the zip. Default base is `https://dev.demobites.com`, overridable via `config.base`.
+The upload zip contains exactly one file: `clean.mp4` stored as `recording.mp4`. Nothing else goes in the zip. Default base is `https://app.demobites.com`, overridable via `config.base`.
 
 ## Standing rules
 

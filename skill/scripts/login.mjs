@@ -15,7 +15,7 @@
 //        node login.mjs --logout     revoke the key server-side AND strip it
 //                                    from local config — a leaked config file
 //                                    dies with the logout.
-// Base resolution: CLI arg, config.base, https://dev.demobites.com.
+// Base resolution: CLI arg, config.base, https://app.demobites.com.
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -33,8 +33,8 @@ const wantLogout = process.argv.includes("--logout");
 // CLI base argument must not point the revoke at a different host (review
 // finding — the real key would stay live while we claim success).
 const base = (wantLogout
-  ? (cfg.base || argv[0] || "https://dev.demobites.com")
-  : (argv[0] || cfg.base || "https://dev.demobites.com")
+  ? (cfg.base || argv[0] || "https://app.demobites.com")
+  : (argv[0] || cfg.base || "https://app.demobites.com")
 ).replace(/\/+$/, "");
 
 if (wantLogout) {
