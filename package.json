@@ -27,11 +27,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/demobites/demobite.git"
+    "url": "git+https://github.com/demobites/agentic-recorder.git"
   },
-  "homepage": "https://github.com/demobites/demobite#readme",
+  "homepage": "https://github.com/demobites/agentic-recorder#readme",
   "bugs": {
-    "url": "https://github.com/demobites/demobite/issues"
+    "url": "https://github.com/demobites/agentic-recorder/issues"
   },
   "license": "MIT",
   "type": "module"
