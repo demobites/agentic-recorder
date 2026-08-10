@@ -69,6 +69,7 @@ execFileSync("ffmpeg", [
 const dur = execFileSync("ffprobe", [
   "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", clean,
 ]).toString().trim();
+const duration = parseFloat(dur);
 // LAW (founder): a Bite is capped at 90 seconds by product concept. A take
 // that cuts longer than that must not proceed to staging — the story needs a
 // SPLIT, not a trim. Fail loudly here, before any upload machinery runs.
