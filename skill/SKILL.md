@@ -91,6 +91,12 @@ Holding shots to cover estimated lines is what produced a 60 second take with th
 **Budgets, hold yourself to them:**
 
 - **30 to 45 seconds total.** Over 45 is a rewrite, not a trim.
+- **90 seconds is a HARD CAP, by product concept, and it is a limit, not a
+  target.** A Bite over 90 seconds does not exist. Budget the beats BEFORE
+  filming: if the human's scenario cannot honestly fit inside 90 seconds, do
+  not film-and-trim and do not compress it into uselessness — tell them up
+  front and ask them to SPLIT it into multiple Bites, one story per Bite.
+  State the estimated duration in every storyboard presentation.
 - **6 to 10 beats.** More than that and nothing gets seen.
 - **8 to 14 words per narration line.** Short beats one long one, every time.
 - Trust the defaults in `record.mjs` (`DEFAULT_HOVER_DWELL` 3.2s, `DEFAULT_CLICK_AFTER` 2.0s). Only override when the app itself is slow.

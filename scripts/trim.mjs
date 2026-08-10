@@ -69,4 +69,19 @@ execFileSync("ffmpeg", [
 const dur = execFileSync("ffprobe", [
   "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", clean,
 ]).toString().trim();
+// LAW (founder): a Bite is capped at 90 seconds by product concept. A take
+// that cuts longer than that must not proceed to staging — the story needs a
+// SPLIT, not a trim. Fail loudly here, before any upload machinery runs.
+if (duration > 90) {
+  console.error(
+    `HARD CAP: this take cuts to ${duration.toFixed(1)}s — a Bite is limited to 90 seconds. ` +
+    "Do not upload. Split the scenario into multiple Bites and refilm."
+  );
+  process.exit(1);
+}
+if (duration > 60) {
+  console.error(
+    `Note: ${duration.toFixed(1)}s is long for a Bite — the sweet spot is 30 to 45 seconds. Consider tightening.`
+  );
+}
 console.log(`clean.mp4 ready in ${dir} (trimmed ${r0.toFixed ? r0.toFixed(2) : r0}s from the head), duration ${parseFloat(dur).toFixed(2)}s`);
