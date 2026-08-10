@@ -1,0 +1,38 @@
+{
+  "name": "demobite",
+  "version": "0.0.1",
+  "description": "The DemoBites agentic recorder — you prompt, it films a real browser, and DemoBites turns the take into an editable demo bite.",
+  "bin": {
+    "demobite": "launcher/index.mjs"
+  },
+  "files": [
+    "launcher",
+    "skill",
+    "recorder",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "demo",
+    "screen-recording",
+    "playwright",
+    "claude-code",
+    "skill",
+    "demobites",
+    "agentic"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/demobites/demobite.git"
+  },
+  "homepage": "https://github.com/demobites/demobite#readme",
+  "bugs": {
+    "url": "https://github.com/demobites/demobite/issues"
+  },
+  "license": "MIT",
+  "type": "module"
+}

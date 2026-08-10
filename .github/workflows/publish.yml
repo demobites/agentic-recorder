@@ -1,0 +1,36 @@
+name: Publish to npm
+
+# Publishes on version tags (v0.0.2, v1.0.0, …) with npm PROVENANCE via
+# GitHub OIDC — no tokens anywhere. Requires the npm package's Trusted
+# Publisher to be configured (npmjs.com → demobite → Settings → Trusted
+# Publisher → this repo + this workflow filename) after the first manual
+# publish parks the name.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write # OIDC for npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Verify tag matches package.json version
+        run: |
+          PKG_V=$(node -p "require('./package.json').version")
+          TAG_V=${GITHUB_REF_NAME#v}
+          if [ "$PKG_V" != "$TAG_V" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG_V" >&2
+            exit 1
+          fi
+      - name: Publish with provenance
+        run: npm publish --provenance --access public
