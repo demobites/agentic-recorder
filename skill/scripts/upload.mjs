@@ -167,15 +167,23 @@ await putS3(uploadUrl, "application/zip", zipPath, "ZIP");
 await putS3(previewUploadUrl, "video/mp4", cleanPath, "Preview");
 
 // ── open the in-app preview — the review happens THERE ─────────────────────
+// Batch etiquette (founder, 2026-08-11): when takes are stacked for a later
+// review sprint, auto-opening a tab per take is spam. `--no-open` (or
+// config.open_preview === false) stages silently — the queue pill and the
+// printed URL carry the message. Default stays open: for a single take the
+// opened page IS the consent moment.
 const pageUrl = new URL(previewUrl, base).toString();
 console.log(`Staged. Review and approve in the browser:\n  ${pageUrl}`);
 if (typeof pendingCount === "number" && pendingCount > 1 && queueUrl) {
   console.log(`${pendingCount} takes are now waiting for review: ${new URL(queueUrl, base).toString()}`);
 }
-try {
-  const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-  spawnSync(opener, [pageUrl], { stdio: "ignore" });
-} catch { /* printing the URL above is the fallback */ }
+const noOpen = process.argv.includes("--no-open") || cfg.open_preview === false;
+if (!noOpen) {
+  try {
+    const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+    spawnSync(opener, [pageUrl], { stdio: "ignore" });
+  } catch { /* printing the URL above is the fallback */ }
+}
 
 // ── poll while the human decides, then until the bite is READY ─────────────
 // LAW (founder 2026-08-08): never hand a human a studio link before the bite
