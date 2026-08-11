@@ -551,7 +551,12 @@ try {
         rec.slow_content_ms = visibleTarget.lastWaitMs;
         console.log(`SLOW CONTENT: step ${rec.n} waited ${(visibleTarget.lastWaitMs / 1000).toFixed(1)}s for its target — content was loading on camera. Judge the take; prefer a retake.`);
       }
-      const x = box.x + box.width / 2, y = box.y + box.height / 2;
+      // Optional fractional click point within the target box (step.at =
+      // [fx, fy], each 0..1, default center). Lets a click SET a value on
+      // track-style controls (sliders) without needing drag support.
+      const atFx = Array.isArray(step.at) ? Math.min(1, Math.max(0, step.at[0] ?? 0.5)) : 0.5;
+      const atFy = Array.isArray(step.at) ? Math.min(1, Math.max(0, step.at[1] ?? 0.5)) : 0.5;
+      const x = box.x + box.width * atFx, y = box.y + box.height * atFy;
       // Resolved BEFORE the glide so the answer costs no video time.
       const targetCursor = await cursorForElement(el);
       const shotStart = t();
