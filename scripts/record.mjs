@@ -20,7 +20,7 @@ if (!outArg || !storyArg) {
 }
 
 const STORYBOARD = JSON.parse(fs.readFileSync(storyArg, "utf8"));
-const ACTIONS = new Set(["goto", "settle", "scroll", "click", "hover"]);
+const ACTIONS = new Set(["goto", "settle", "scroll", "click", "hover", "type", "expect"]);
 if (!Array.isArray(STORYBOARD.steps) || STORYBOARD.steps.length === 0) {
   console.error("Storyboard has no steps.");
   process.exit(2);
@@ -31,6 +31,8 @@ for (const [i, s] of STORYBOARD.steps.entries()) {
   if (s.action === "goto" && !s.url) { console.error(`${at}: goto needs url`); process.exit(2); }
   if (s.action === "scroll" && typeof s.dy !== "number") { console.error(`${at}: scroll needs numeric dy`); process.exit(2); }
   if ((s.action === "click" || s.action === "hover") && !s.selector) { console.error(`${at}: ${s.action} needs selector`); process.exit(2); }
+  if (s.action === "type" && (!s.selector || typeof s.text !== "string")) { console.error(`${at}: type needs selector and text`); process.exit(2); }
+  if (s.action === "expect" && !s.selector) { console.error(`${at}: expect needs selector`); process.exit(2); }
 }
 
 const DIR = path.resolve(outArg);
@@ -678,6 +680,72 @@ try {
           }
         }
       }
+    } else if (step.action === "expect") {
+      // PRECONDITION GATE (brand-kit incident, 2026-08-11): assert the page
+      // is what the story assumes BEFORE any mutating click. Costs no camera
+      // time — no cursor movement, no shot. The take FAILS LOUDLY here if
+      // the state is wrong (wrong workspace, wrong account, wrong screen),
+      // instead of filming a confident mistake.
+      const sel = step.text
+        ? `${step.selector}:has-text(${JSON.stringify(step.text)})`
+        : step.selector;
+      try {
+        await page.locator(sel).first().waitFor({ state: "visible", timeout: step.timeout ?? 8000 });
+      } catch {
+        throw new Error(
+          `EXPECT FAILED at step ${rec.n}: "${sel}" not visible — the page is not what the storyboard assumes. Take aborted before any further action.`
+        );
+      }
+    } else if (step.action === "type") {
+      // Click the field, then type with a human cadence. Optional step.clear
+      // selects-all + deletes first; optional step.enter presses Enter after.
+      const { box, el } = await visibleTarget(step.selector, step.minY ?? 0);
+      if (!box) throw new Error("no visible target for " + step.selector);
+      const x = box.x + box.width / 2, y = box.y + box.height / 2;
+      const targetCursor = await cursorForElement(el);
+      const shotStart = t();
+      currentCursor = "arrow";
+      await glide(x, y);
+      const arrivalT = t();
+      currentCursor = targetCursor;
+      rec.cursor = currentCursor;
+      pushMouse("move", x, y);
+      rec.target = {
+        selector: step.selector,
+        x: Math.round(x / SUPERSAMPLE), y: Math.round(y / SUPERSAMPLE),
+        bbox: {
+          x: Math.round(box.x / SUPERSAMPLE), y: Math.round(box.y / SUPERSAMPLE),
+          w: Math.round(box.width / SUPERSAMPLE), h: Math.round(box.height / SUPERSAMPLE),
+        },
+      };
+      await page.waitForTimeout(step.dwell ?? DEFAULT_CLICK_DWELL);
+      await page.evaluate(([a, b]) => window.__recPulse?.(a, b), [x, y]);
+      await page.waitForTimeout(220);
+      rec.click_at = t();
+      pushMouse("click", x, y, "left");
+      await page.mouse.click(x, y);
+      await page.waitForTimeout(380);
+      if (step.clear) {
+        await page.keyboard.press(process.platform === "darwin" ? "Meta+a" : "Control+a");
+        await page.waitForTimeout(180);
+        await page.keyboard.press("Backspace");
+        await page.waitForTimeout(280);
+      }
+      const text = String(step.text);
+      rec.typed = text;
+      for (const ch of text) {
+        await page.keyboard.type(ch);
+        await page.waitForTimeout(34 + Math.random() * 70);
+      }
+      if (step.enter) {
+        await page.waitForTimeout(300);
+        await page.keyboard.press("Enter");
+      }
+      // One shot: the field, from arrival through the typing.
+      pushShot(box, Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label ?? "type", { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
+      currentCursor = await cursorUnderPoint();
+      pushMouse("move", cx, cy);
+      await page.waitForTimeout(step.after ?? DEFAULT_CLICK_AFTER);
     }
     rec.t_end = t();
     manifest.steps.push(rec);
