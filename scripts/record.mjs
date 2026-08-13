@@ -520,11 +520,46 @@ try {
       await ensureCursor();
       await applyHideCss();
       if (manifest.record_from === undefined) {
-        // LAW (first-frame, founder 2026-08-08): the published cut opens on a
-        // FULLY loaded page — wait for network quiet (best effort, LinkedIn
-        // style long-pollers never go fully idle) plus a short beat, THEN
-        // stamp record_from: where the final video begins.
+        // LAW (first-frame, founder 2026-08-08, HARDENED 2026-08-13 after a
+        // take opened on a white page): the published cut opens on a FULLY
+        // loaded page. Network quiet is NOT paint — client-rendered apps go
+        // networkidle while the screen is still blank. Three gates in order:
+        //   1. network quiet (best effort — long-pollers never go idle)
+        //   2. PAINT GATE: poll until the page shows real content (visible
+        //      text mass or media elements), up to 15s
+        //   3. if the NEXT storyboard step is an `expect`, resolve it HERE,
+        //      before the stamp — the cut then provably opens on the state
+        //      the story assumes (the expect step later re-checks instantly)
+        // Only then stamp record_from: where the final video begins.
         await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+        const paintDeadline = Date.now() + 15000;
+        let painted = false;
+        while (Date.now() < paintDeadline) {
+          painted = await page.evaluate(() => {
+            const textMass = (document.body?.innerText ?? "").trim().length;
+            const media = document.querySelectorAll("img, video, canvas, svg").length;
+            let visible = 0;
+            for (const el of document.querySelectorAll("div, section, main, button")) {
+              const r = el.getBoundingClientRect();
+              if (r.width > 40 && r.height > 20) { visible++; if (visible > 8) break; }
+            }
+            return (textMass > 80 || media >= 3) && visible > 8;
+          }).catch(() => false);
+          if (painted) break;
+          await page.waitForTimeout(250);
+        }
+        if (!painted) {
+          console.log("PAINT GATE: page never showed real content within 15s — the take would open on a blank frame. Judge the footage carefully.");
+        }
+        const nextStep = STORYBOARD.steps[STORYBOARD.steps.indexOf(step) + 1];
+        if (nextStep?.action === "expect" && nextStep.selector) {
+          const sel = nextStep.text
+            ? `${nextStep.selector}:has-text(${JSON.stringify(nextStep.text)})`
+            : nextStep.selector;
+          await page.locator(sel).first().waitFor({ state: "visible", timeout: nextStep.timeout ?? 15000 }).catch(() => {
+            console.log(`PAINT GATE: pre-stamp expect "${sel}" not visible — stamping anyway; the expect step will abort the take.`);
+          });
+        }
         await page.waitForTimeout(600);
         manifest.record_from = t();
       }
