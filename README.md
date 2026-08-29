@@ -7,7 +7,7 @@ a fully editable demo: AI narration, zooms, cursor rendering, intro and outro,
 localization, all tweakable in the studio.
 
 ```bash
-npx demobite@latest
+npx demobite agentic-recorder
 ```
 
 That one command checks your setup, installs the recorder skill for

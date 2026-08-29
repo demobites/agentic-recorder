@@ -488,17 +488,30 @@ async function glide(x, y) {
   pushMouse("move", x, y);
 }
 
-async function smoothScroll(dy, ms = 1400) {
-  await page.evaluate(([d, m]) => new Promise((res) => {
-    const y0 = window.scrollY, t0 = performance.now();
+async function smoothScroll(dy, ms = 1400, within = null) {
+  // `within` (2026-08-28, UC-studio lesson): full-viewport apps scroll INNER
+  // panels, not the window — window.scrollTo is a no-op there. When set, it
+  // is a CSS selector; the first matching element that actually scrolls
+  // (scrollHeight meaningfully over clientHeight) is eased instead of the
+  // window. Same easing, same on-camera motion.
+  await page.evaluate(([d, m, sel]) => new Promise((res) => {
+    let target = null;
+    if (sel) {
+      target = [...document.querySelectorAll(sel)].find(
+        (el) => el.scrollHeight > el.clientHeight + 40,
+      ) ?? null;
+    }
+    const y0 = target ? target.scrollTop : window.scrollY;
+    const t0 = performance.now();
     const step = (now) => {
       const e = Math.min(1, (now - t0) / m);
       const ease = e < 0.5 ? 2 * e * e : 1 - Math.pow(-2 * e + 2, 2) / 2;
-      window.scrollTo(0, y0 + d * ease);
+      if (target) target.scrollTo(0, y0 + d * ease);
+      else window.scrollTo(0, y0 + d * ease);
       e < 1 ? requestAnimationFrame(step) : res();
     };
     requestAnimationFrame(step);
-  }), [dy, ms]);
+  }), [dy, ms, within]);
 }
 
 let failure = null;
@@ -576,7 +589,7 @@ try {
     } else if (step.action === "scroll") {
       // scrollTo distances are ALSO zoomed-space under CSS zoom (measured:
       // scrollTo(0,600) moves 300 design px) — storyboards speak design px.
-      await smoothScroll(step.dy * SUPERSAMPLE, step.ms ?? 1400);
+      await smoothScroll(step.dy * SUPERSAMPLE, step.ms ?? 1400, step.within ?? null);
     } else if (step.action === "click" || step.action === "hover") {
       const { box, el } = await visibleTarget(step.selector, step.minY ?? 0);
       if (!box) throw new Error("no visible target for " + step.selector);
