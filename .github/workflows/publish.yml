@@ -22,8 +22,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # OIDC trusted publishing needs npm >= 11.5.1 — Node 20's npm 10
+          # cannot mint the OIDC token and falls back to an unauthenticated
+          # PUT, which npm answers with 404 (the failure behind v0.0.2-v1.0.0
+          # runs). Node 24 + explicit npm@latest keeps the CLI capable.
+          node-version: 24
           registry-url: https://registry.npmjs.org
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
       - name: Verify tag matches package.json version
         run: |
           PKG_V=$(node -p "require('./package.json').version")
