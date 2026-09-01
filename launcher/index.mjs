@@ -49,8 +49,8 @@ if (chromePaths.some((p) => fs.existsSync(p)) || hasBin("google-chrome")) ok("Go
 else warn("Google Chrome not found — the recorder will download Chromium on first take");
 if (hasBin("ffmpeg")) ok("ffmpeg");
 else warn("ffmpeg not found — install it (macOS: brew install ffmpeg) before recording");
-if (hasBin("claude")) ok("Claude Code (the agent that drives the recorder)");
-else warn("Claude Code not found — install it from https://claude.com/claude-code, the recorder is agent-driven");
+if (hasBin("claude")) ok("Claude Code (drives the recorder; MCP registers automatically)");
+else warn("Claude Code not found — using Cursor or Codex? They drive the recorder too; MCP setup prints below");
 
 // ── 2. Install / update the skill ──────────────────────────────────────────
 const skillsDir = path.join(os.homedir(), ".claude", "skills");
@@ -139,7 +139,8 @@ Publishing always shows you a preview to approve first.
 const cfg = readCfg();
 if (cfg?.api_key) registerMcp(cfg, { quiet: true });
 console.log(`
-Ready. Everything is agent-driven — open Claude Code in your project and ask:
+Ready. Everything is agent-driven — open your coding agent (Claude Code,
+Cursor, Codex) in your project and ask:
 
     "Record a demo of <your flow> and upload it to DemoBites"
     "Create a release with my latest bites and add Spanish"

@@ -11,7 +11,8 @@ npx demobite
 ```
 
 That one command checks your setup, installs the recorder skill for
-[Claude Code](https://claude.com/claude-code), and wires the DemoBites
+your coding agent — [Claude Code](https://claude.com/claude-code), Cursor,
+or Codex — and wires the DemoBites
 management MCP so your agent can also run your Update Center and Demo Center.
 Sign-in happens through your own browser — no passwords in the terminal, ever.
 Then you just ask your agent:
@@ -35,7 +36,7 @@ does the rest.
 | Directory | What it is |
 |---|---|
 | `launcher/` | The `npx demobite` entry — environment checks, skill install, login |
-| `skill/` | The DemoBites recorder skill for Claude Code (staging, preview, approval flow) |
+| `skill/` | The DemoBites recorder skill for coding agents (staging, preview, approval flow) |
 | `recorder/` | The open recorder — same filming engine, no account, ends at a polished `demo.mp4` |
 | `scripts/` | The shared engine: filming, clock calibration, cutting |
 
@@ -43,7 +44,7 @@ does the rest.
 
 The `recorder/` directory is a standalone skill: the same real-browser filming,
 hover-anchor clock calibration and camera work, delivering a finished, styled
-`demo.mp4` on your disk — no account, no upload. Point Claude Code at it and
+`demo.mp4` on your disk — no account, no upload. Point your coding agent at it and
 film. When you want narration, zooms, an editable timeline and hosting, the
 sibling skill in `skill/` is one login away.
 
@@ -57,7 +58,7 @@ is cryptographically tied to a public commit in this repository.
 ## Requirements
 
 - Node 18+
-- [Claude Code](https://claude.com/claude-code) — the recorder is agent-driven
+- A coding agent — [Claude Code](https://claude.com/claude-code), Cursor, or Codex; the recorder is agent-driven
 - Google Chrome (recommended; films with the real browser) — otherwise
   Chromium is downloaded on first take
 - ffmpeg (`brew install ffmpeg` on macOS)
