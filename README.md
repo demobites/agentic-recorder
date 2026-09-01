@@ -31,6 +31,53 @@ The agent storyboards the flow, films it in a real Chrome, and stages the take
 for your approval inside DemoBites. You approve in the product; the platform
 does the rest.
 
+## Manage DemoBites from your agent (MCP)
+
+Recording is half the story. The same package wires the **DemoBites management
+MCP** — a control plane your agent uses to run your Update Center and Demo
+Center. Your customers' agents read your centers; your agent runs them.
+
+```bash
+npx demobite mcp
+```
+
+Claude Code is registered automatically. Any other MCP client works over
+Streamable HTTP: point it at `https://app.demobites.com/api/mcp` with the
+`Authorization: Bearer <key>` header the command prints (in Cursor, add both
+under Settings → MCP). Then talk to your agent like a teammate:
+
+> "Create a release with my latest bites, add Spanish, and publish it."
+
+> "What's on our Demo Center? Swap the checkout bite for the onboarding one."
+
+### What it can do — 19 tools
+
+| Group | Tools |
+|---|---|
+| Connect | `get_started` · `connect_demobites` · `check_connection` · `get_recording_options` |
+| Read | `get_status` · `list_bites` · `list_releases` · `get_release` · `list_languages` |
+| Draft & edit | `create_release` · `update_release` · `assign_bites_to_release` · `update_center_settings` · `add_language` · `update_demo_center` |
+| Publish — with your approval | `publish_release` · `unpublish_release` · `remove_language` · `publish_demo_center` |
+
+The server describes itself: any client's `tools/list` returns every tool with
+its full input schema, straight from the running code.
+
+### You stay in charge
+
+Draft work executes directly, exactly like clicking around the product. But
+anything that touches a **public** page is two-phase: the tool returns a
+human-readable preview plus a single-use confirmation token, your agent shows
+you the preview, and only your go-ahead executes it. Tokens expire in ten
+minutes, are bound to the exact action and arguments, and every management
+call lands in an audit log.
+
+### Plans
+
+Connecting and reading are open. Managing requires the **Grow** plan.
+Recording works on every plan.
+
+Full guide: [Manage from your agent](https://www.demobites.com/docs/bites/manage-from-your-agent)
+
 ## What's in this repository
 
 | Directory | What it is |
