@@ -7,15 +7,24 @@ a fully editable demo: AI narration, zooms, cursor rendering, intro and outro,
 localization, all tweakable in the studio.
 
 ```bash
-npx demobite agentic-recorder
+npx demobite
 ```
 
 That one command checks your setup, installs the recorder skill for
-[Claude Code](https://claude.com/claude-code), and connects your machine to
-DemoBites through your own browser — no passwords in the terminal, ever.
+[Claude Code](https://claude.com/claude-code), and wires the DemoBites
+management MCP so your agent can also run your Update Center and Demo Center.
+Sign-in happens through your own browser — no passwords in the terminal, ever.
 Then you just ask your agent:
 
 > "Record a demo of how search works on our app, and upload it to DemoBites."
+
+> "Create a release with my latest bites and add Spanish."
+
+Commands: `npx demobite` (full setup) · `npx demobite login` · `npx demobite mcp`
+(register the management MCP with your agent) · `npx demobite logout`.
+Anything public — publishing a release, taking a language offline — always
+shows you a preview to approve first. Managing by agent requires the Grow plan;
+recording works on every plan.
 
 The agent storyboards the flow, films it in a real Chrome, and stages the take
 for your approval inside DemoBites. You approve in the product; the platform

@@ -126,6 +126,9 @@ while (Date.now() < deadline) {
     cfg.base = base;
     cfg.api_key = data.api_key;
     cfg.workspace = data.workspace;
+    // Capability scopes (MCP engine 2026-08-31): "manage" rides only on
+    // Grow-approved keys and unlocks `npx demobite mcp`.
+    cfg.scopes = Array.isArray(data.scopes) && data.scopes.length ? data.scopes : ["record"];
     fs.mkdirSync(cfgDir, { recursive: true });
     fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n");
     fs.chmodSync(cfgPath, 0o600);
@@ -133,7 +136,11 @@ while (Date.now() < deadline) {
       data.workspace && typeof data.workspace === "object"
         ? data.workspace.name ?? data.workspace.slug ?? JSON.stringify(data.workspace)
         : data.workspace;
+    const canManage = cfg.scopes.includes("manage");
     console.log(`Approved. Recorder key saved to .recorder/config.json (workspace: ${wsName}).`);
+    console.log(canManage
+      ? "This key can also MANAGE your centers — wire your agent with: npx demobite mcp"
+      : "This key records only. Managing by agent (MCP) comes with the Grow plan.");
     process.exit(0);
   }
   // denied / expired / consumed — terminal states. The wording matters:
