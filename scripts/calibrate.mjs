@@ -38,6 +38,14 @@ if (!fs.existsSync(manPath)) { console.error(`${manPath} not found. Run record.m
 if (!fs.existsSync(clean)) { console.error(`${clean} not found. Run trim.mjs first.`); process.exit(1); }
 const man = JSON.parse(fs.readFileSync(manPath, "utf8"));
 const tb = man.timebase;
+// IDEMPOTENCE (2026-09-02): always measure from the identity base. A previous
+// run may have already applied a hover-anchor shift to `b`; re-running on top
+// of it compounded two shifts (-0.71 then -1.67 on one take) and produced a
+// clock that matched nothing. Re-base first, then anchor once.
+if (tb && typeof man.record_from === "number") {
+  tb.a = 1; tb.k = 1; tb.b = -man.record_from; tb.videoRecordFrom = man.record_from;
+  tb.method = "identity (raw is wall-rate; see 2026-08-09 four-lane verification)";
+}
 if (!tb || typeof tb.a !== "number" || typeof tb.b !== "number") {
   console.error("manifest.json has no timebase stamp. Run trim.mjs first.");
   process.exit(1);
@@ -45,7 +53,10 @@ if (!tb || typeof tb.a !== "number" || typeof tb.b !== "number") {
 
 const FRAME = { w: man.frame?.width ?? 1920, h: man.frame?.height ?? 1080 };
 const clicks = (man.steps ?? [])
-  .filter((s) => typeof s.click_at === "number")
+  // A `type` step has no single consequence instant — its pixels keep changing
+  // for the whole typing run, so the detector lands at the END of it (+5..7 s
+  // every take, 2026-09-02) and poisons the median. Clicks only.
+  .filter((s) => typeof s.click_at === "number" && s.action !== "type")
   .map((s) => ({ wall: s.click_at, label: s.label ?? "click" }))
   .sort((x, y) => x.wall - y.wall);
 
