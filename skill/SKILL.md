@@ -90,7 +90,7 @@ Holding shots to cover estimated lines is what produced a 60 second take with th
 
 **Budgets, hold yourself to them:**
 
-- **30 to 45 seconds total.** Over 45 is a rewrite, not a trim.
+- **30 to 45 seconds total (35 to 45 when the story crosses pages).** Over 45 is a rewrite, not a trim; under 30 with two pages is rushing, see the linger law below.
 - **90 seconds is a HARD CAP, by product concept, and it is a limit, not a
   target.** A Bite over 90 seconds does not exist. Budget the beats BEFORE
   filming: if the human's scenario cannot honestly fit inside 90 seconds, do
@@ -102,6 +102,14 @@ Holding shots to cover estimated lines is what produced a 60 second take with th
 - Trust the defaults in `record.mjs` (`DEFAULT_HOVER_DWELL` 3.2s, `DEFAULT_CLICK_AFTER` 2.0s). Only override when the app itself is slow.
 
 **LAW: a line must FIT its beat, and a beat that NAVIGATES away cannot hold two lines** (founder drift analysis, 2026-08-09). Each narration line plays while its own beat is on screen. If a beat is a click that navigates to a new page, everything you want said ABOUT the old page has to fit BEFORE that click — a ~14-word line is ~5s of speech, so one line per pre-navigation beat, not two stacked. Cramming the intro plus a second observation before a fast navigation is what makes the words drift a beat behind the picture (a list-page sentence finishing over the product page). If you need to say two things about a page, either say them AFTER you have landed on it, or give the source beat a longer `dwell` so the line finishes before the click. The ingestion fits words to the video, but it cannot make 8 seconds of speech fit into a 5 second window — that is authoring, and it is yours.
+
+**LAW: every take opens with a framing intro** (founder, 2026-09-02). The first narrated beat frames the story for someone who is NOT inside the product yet: "Let's look at what happens when a visitor searches your Update Center for something you have not published yet." Never open on a UI detail ("Search sits at the top right"). The viewer is not in the realm; bring them in first.
+
+**LAW: narrate the path, do not drive.** Before every navigation, scroll or drill-down, SAY where we are going and why, in the beat before it: "In the analytics for this Update Center, near the bottom, sits search intelligence." A viewer who only sees a cursor dive into a panel learns nothing about how to get there themselves.
+
+**LAW: linger.** A single-page story is 30 to 45 seconds; a story that crosses pages is 35 to 45 seconds, never 23. Every beat holds at least as long as its own line plus a breath (record.mjs now enforces this: a narrated beat waits until words / 2.6 s + 0.8 s have passed), and the last beat holds its whole line so no track ever runs past the end of the video. The ingestion refits words to video; it cannot fit five seconds of speech into a two-second beat.
+
+**LAW: page transitions are cut and faded, never watched.** When the story moves to another page, the viewer sees page one, a short fade, page two — never the loading blank. record.mjs stamps every mid-take `goto` and manifest.mjs cuts that window out with a fade (`cuts` in the wire manifest); the ingestion lays it on the bite as a timeline cut. No zoom and no narration live inside a cut (the studio forbids both), so put the line about the new page on the beat AFTER it has landed, and say goodbye to the old page BEFORE the goto.
 
 Storyboard schema:
 
@@ -246,7 +254,8 @@ What the human approves on that page is the **picture and the coverage**, never 
     click?: { x, y, t },                     // frame px + seconds
     narration?: { text, t, estimated_duration }
   }],
-  camera: [{ t_start, t_end, x, y, w, h, label }]   // focus rectangles, frame px
+  camera: [{ t_start, t_end, x, y, w, h, label }],  // focus rectangles, frame px
+  cuts?: [{ t_start, t_end, transition: 'fade'|'abrupt', n }]  // navigation loads, cut out of the bite
 }
 ```
 

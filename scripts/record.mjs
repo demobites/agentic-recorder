@@ -85,6 +85,9 @@ const DEFAULT_HOVER_DWELL = 3200;
 const DEFAULT_CLICK_DWELL = 700;
 const DEFAULT_CLICK_AFTER = 2000;
 const CLOSING_BEAT_MS = 2200;
+// LAW (hold your line, founder 2026-09-02): a beat is never shorter than its
+// own narration. Same estimate manifest.mjs uses (words / 2.6 s + 0.4 s).
+const estimateSpeech = (text) => String(text).trim().split(/\s+/).filter(Boolean).length / 2.6 + 0.4;
 
 const narrationOf = (s) => {
   if (s.narration == null) return null;
@@ -529,9 +532,34 @@ try {
     };
     process.stdout.write(`step ${rec.n} ${step.action} ${step.label ?? ""}\n`);
     if (step.action === "goto") {
+      const navIssuedAt = t();
       await page.goto(step.url, { waitUntil: "load" });
       await ensureCursor();
       await applyHideCss();
+      if (manifest.record_from !== undefined) {
+        // LAW (page transitions, founder 2026-09-02): a mid-take navigation
+        // must not show its loading blank. Wait for the new page to PAINT,
+        // then stamp the window so manifest.mjs cuts it out with a fade —
+        // the viewer sees page one, a fade, page two. No zoom or narration
+        // may live inside that window (manifest.mjs keeps them out).
+        await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+        const paintDeadline = Date.now() + 10000;
+        while (Date.now() < paintDeadline) {
+          const painted = await page.evaluate(() => {
+            const textMass = (document.body?.innerText ?? "").trim().length;
+            let visible = 0;
+            for (const el of document.querySelectorAll("div, section, main, button")) {
+              const r = el.getBoundingClientRect();
+              if (r.width > 40 && r.height > 20) { visible++; if (visible > 8) break; }
+            }
+            return textMass > 80 && visible > 8;
+          }).catch(() => false);
+          if (painted) break;
+          await page.waitForTimeout(200);
+        }
+        await page.waitForTimeout(350);
+        rec.nav = { from: navIssuedAt, to: t() };
+      }
       if (manifest.record_from === undefined) {
         // LAW (first-frame, founder 2026-08-08, HARDENED 2026-08-13 after a
         // take opened on a white page): the published cut opens on a FULLY
@@ -615,6 +643,7 @@ try {
       currentCursor = "arrow";
       await glide(x, y);
       const arrivalT = t();
+      rec.arrival = arrivalT; // narration anchors here (manifest.mjs) — so does the beat hold
       currentCursor = targetCursor;
       rec.cursor = currentCursor;
       pushMouse("move", x, y);
@@ -755,6 +784,7 @@ try {
       currentCursor = "arrow";
       await glide(x, y);
       const arrivalT = t();
+      rec.arrival = arrivalT; // narration anchors here (manifest.mjs) — so does the beat hold
       currentCursor = targetCursor;
       rec.cursor = currentCursor;
       pushMouse("move", x, y);
@@ -794,6 +824,16 @@ try {
       currentCursor = await cursorUnderPoint();
       pushMouse("move", cx, cy);
       await page.waitForTimeout(step.after ?? DEFAULT_CLICK_AFTER);
+    }
+    if (rec.narration && step.action !== "goto" && step.action !== "expect") {
+      // Hold the shot until the line would have finished, plus a breath — the
+      // ingestion refits words to video but cannot fit 5 s of speech in a 2 s
+      // beat (founder 2026-09-02: the last track ran past the end).
+      // Measured from ARRIVAL (where manifest.mjs anchors the line), not from
+      // the cursor's departure — the glide is not speaking time.
+      const need = estimateSpeech(rec.narration) + 0.5;
+      const elapsed = t() - (rec.arrival ?? rec.t_start);
+      if (elapsed < need) await page.waitForTimeout(Math.round((need - elapsed) * 1000));
     }
     rec.t_end = t();
     manifest.steps.push(rec);

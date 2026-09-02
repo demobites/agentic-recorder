@@ -9,7 +9,8 @@
 //            on_screen?,                           // what the viewer sees
 //            click?:{x,y,t},                       // frame px + seconds
 //            narration?:{text,t,estimated_duration} }],
-//   camera:[{ t_start, t_end, x, y, w, h, label }] }  // focus rectangles
+//   camera:[{ t_start, t_end, x, y, w, h, label }],  // focus rectangles
+//   cuts?:[{ t_start, t_end, transition:'fade'|'abrupt', n }] }  // navigation loads cut out
 //
 // EVERY time is relative to the uploaded file: record_from is subtracted and
 // the result clamped at 0.
@@ -131,6 +132,24 @@ const steps = (man.steps ?? []).map((s) => {
   }
   return out;
 });
+
+// ── LAW (page transitions, founder 2026-09-02): a mid-take navigation is CUT
+// out with a FADE — the viewer sees page one, a fade, page two, never the
+// loading blank. record.mjs stamps `nav {from,to}` on every goto after the
+// first; each becomes a cut on the uploaded timeline. No narration may start
+// inside a cut (pushed to the cut's end) and no camera shot may live in one
+// (clipped/split below) — the studio forbids zoom + TTS inside cuts anyway.
+const cuts = (man.steps ?? [])
+  .filter((s) => s.nav && Number.isFinite(s.nav.from) && Number.isFinite(s.nav.to))
+  .map((s) => ({ t_start: round2(norm(s.nav.from + 0.12)), t_end: round2(norm(s.nav.to)), transition: "fade", n: s.n }))
+  .filter((c) => c.t_end - c.t_start >= 0.3 && c.t_start >= 0 && c.t_end <= duration)
+  .sort((a, b) => a.t_start - b.t_start);
+const insideCut = (t) => cuts.find((c) => t > c.t_start && t < c.t_end);
+for (const st of steps) {
+  if (!st.narration) continue;
+  const c = insideCut(st.narration.t);
+  if (c) st.narration.t = round2(c.t_end + 0.1);
+}
 
 // ── LAW (breathing room, founder 2026-08-09): narration never speaks over
 // the first or last half second. A voice at t=0 startles; a voice cut by the
@@ -281,6 +300,27 @@ const interactions = mouseEvents.length
     }
   : null;
 
+// Camera shots never overlap a cut: drop shots inside one, clip those that
+// straddle an edge, split those that contain one.
+if (cuts.length > 0) {
+  const clipped = [];
+  for (const sh of camera) {
+    let pieces = [{ ...sh }];
+    for (const c of cuts) {
+      const next = [];
+      for (const p of pieces) {
+        if (p.t_end <= c.t_start || p.t_start >= c.t_end) { next.push(p); continue; }
+        if (p.t_start < c.t_start) next.push({ ...p, t_end: round2(c.t_start) });
+        if (p.t_end > c.t_end) next.push({ ...p, t_start: round2(c.t_end) });
+      }
+      pieces = next;
+    }
+    for (const p of pieces) if (p.t_end - p.t_start >= 0.25) clipped.push(p);
+  }
+  camera.length = 0;
+  camera.push(...clipped.sort((a, b) => a.t_start - b.t_start));
+}
+
 const wire = {
   version: 2,
   app: man.app ?? "App",
@@ -289,13 +329,14 @@ const wire = {
   duration,
   steps,
   camera,
+  ...(cuts.length > 0 ? { cuts } : {}),
   ...(interactions ? { interactions } : {}),
 };
 const outPath = path.join(dir, "manifest.demobites.json");
 fs.writeFileSync(outPath, JSON.stringify(wire, null, 2));
 console.log(
   `manifest.demobites.json written (v2: ${steps.length} steps, ${camera.length} camera shots, ` +
-  `${mouseEvents.length} mouse events, ${duration}s)`,
+  `${mouseEvents.length} mouse events, ${cuts.length} cut${cuts.length === 1 ? "" : "s"}, ${duration}s)`,
 );
 
 if (wantSrt) {
