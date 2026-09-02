@@ -56,32 +56,57 @@ const r0 = man.record_from ?? 0;
 // Shift the cut by it so clean.mp4 truly begins at the record_from moment.
 let beaconDelta = 0;
 let beaconMethod = "";
-if ((man.beacon?.flips?.length ?? 0) >= 2) {
+if ((man.beacon?.flips?.length ?? 0) >= 3) {
   const flips = man.beacon.flips;
   // The flashes are the first big whole-frame changes in the head. Search a
   // window generous enough for seconds of anchor error in either direction.
-  const searchEnd = Math.min(Math.max(r0, flips[flips.length - 1].wall) + 8, 40);
+  const searchEnd = Math.min(Math.max(r0, flips[flips.length - 1].wall) + 10, 45);
   const res = spawnSync("ffmpeg", [
     "-loglevel", "info", "-t", String(searchEnd), "-i", raw,
     "-vf", "select='gt(scene,0.3)',showinfo", "-f", "null", "-",
   ], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
   const onsets = [...`${res.stderr ?? ""}`.matchAll(/pts_time:([0-9.]+)/g)]
     .map((m) => parseFloat(m[1]));
-  if (onsets.length >= 2) {
-    // Pair the first two onsets to the two flips, in order. Anything the page
-    // paints later (the goto) lands after onset 2 and never enters the pair.
-    const d1 = flips[0].wall - onsets[0];
-    const d2 = flips[1].wall - onsets[1];
-    const spread = Math.abs(d1 - d2);
-    if (spread <= 0.15) {
-      beaconDelta = (d1 + d2) / 2;
-      beaconMethod = ` + head-beacon anchor ${beaconDelta >= 0 ? "+" : ""}${beaconDelta.toFixed(3)}s (2 flips, spread ${(spread * 1000).toFixed(0)}ms)`;
-      console.log(`beacon: anchor error ${beaconDelta >= 0 ? "+" : ""}${beaconDelta.toFixed(3)}s measured (flip spread ${(spread * 1000).toFixed(0)}ms) — cut corrected`);
-    } else {
-      console.log(`beacon: flip deltas disagree (${(spread * 1000).toFixed(0)}ms spread) — ignoring beacon, cut stays as stamped`);
+  // Align the KNOWN flash gaps against the DETECTED onset gaps: slide every
+  // flip index against every onset index and count consecutive gap matches
+  // (tolerance 70 ms). Three flashes in a row (two matching gaps) identify
+  // the pattern unambiguously because the gaps strictly increase; the
+  // alignment with the most matches wins. Missing leading flashes (a
+  // screencast that started late) cost nothing but the pairs they would
+  // have added.
+  const TOL = 0.07;
+  let best = null;
+  for (let i = 0; i < flips.length - 2; i++) {
+    for (let j = 0; j < onsets.length - 2; j++) {
+      let k = 0;
+      while (i + k + 1 < flips.length && j + k + 1 < onsets.length) {
+        const gf = flips[i + k + 1].wall - flips[i + k].wall;
+        const go = onsets[j + k + 1] - onsets[j + k];
+        if (Math.abs(gf - go) > TOL) break;
+        k++;
+      }
+      if (k >= 2 && (!best || k > best.k)) best = { i, j, k };
+    }
+  }
+  if (best) {
+    const deltas = [];
+    for (let m = 0; m <= best.k; m++) deltas.push(flips[best.i + m].wall - onsets[best.j + m]);
+    const spread = Math.max(...deltas) - Math.min(...deltas);
+    beaconDelta = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+    const missed = best.i;
+    beaconMethod = ` + head-beacon anchor ${beaconDelta >= 0 ? "+" : ""}${beaconDelta.toFixed(3)}s (${deltas.length} flashes matched, ${missed} missed, spread ${(spread * 1000).toFixed(0)}ms)`;
+    console.log(`beacon: anchor error ${beaconDelta >= 0 ? "+" : ""}${beaconDelta.toFixed(3)}s measured from ${deltas.length} flashes (${missed} before the first frame, spread ${(spread * 1000).toFixed(0)}ms) — cut corrected`);
+    if (spread > 0.15) {
+      console.error(`BEACON FAILED: matched flashes disagree by ${(spread * 1000).toFixed(0)}ms. The cut point cannot be trusted — do not upload, film again.`);
+      process.exit(3);
     }
   } else {
-    console.log("beacon: flashes not found in the raw head — cut stays as stamped");
+    // INCIDENT 2026-09-02: a missed beacon staged a take whose head was cut
+    // seconds late (screencast started after the flashes). The stamped cut
+    // is only right when the screencast began at wall 0, which nothing
+    // guarantees — so a recorded-but-unfound beacon is a hard stop.
+    console.error(`BEACON FAILED: no run of the flash pattern found in the raw head (${onsets.length} onsets seen). The startup lead is unmeasured and the cut point cannot be trusted. Do not upload — film again (a busy machine delays the screencast; let builds finish first).`);
+    process.exit(3);
   }
 }
 

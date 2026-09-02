@@ -40,7 +40,7 @@ const DIR = path.resolve(outArg);
 // RE-TAKE (founder 2026-09-02): the storyboard IS the bite's DNA. Keep a verbatim
 // copy in the take dir so upload.mjs can stage it as the recording recipe —
 // selectors, urls, typed text, hideCss — the wire manifest alone cannot re-film.
-const ENGINE_VERSION = "1.0.8";
+const ENGINE_VERSION = "1.0.9";
 fs.mkdirSync(DIR, { recursive: true });
 // The copy is the RECIPE, not the transport: cdpWsUrl / storageStatePath are
 // per-take plumbing stamped by the cloud runner (a CDP url carries a session
@@ -615,6 +615,7 @@ async function smoothScroll(dy, ms = 1400, within = null) {
   }), [dy, ms, within]);
 }
 
+const BEACON_GAPS_MS = [300, 450, 600, 750, 900, 1050];
 // ── Head beacon ────────────────────────────────────────────────────────────
 // The identity law (video = wall - record_from) assumes raw.webm's t=0 lines
 // up with T0. That anchoring is otherwise UNMEASURED: on a cold remote-CDP
@@ -634,22 +635,26 @@ try {
     // stamp error at half a CDP round trip — inside one frame co-located.
     return { color, wall: (before + after) / 2 };
   };
-  // Wait for the screencast to actually be ROLLING (first frames on disk):
-  // over a remote CDP link the recorder starts late, and a flash before the
-  // first frame is invisible (mode A smoke, 2026-09-02).
-  const rollDeadline = Date.now() + 5000;
-  while (Date.now() < rollDeadline) {
-    const rolling = fs.readdirSync(DIR).some((f) => f.endsWith(".webm") && fs.statSync(path.join(DIR, f)).size > 4096);
-    if (rolling) break;
-    await page.waitForTimeout(100);
-  }
+  // GAP-CODED PATTERN (2026-09-02, after the prod bite-96 miscut): nothing
+  // inside this process can see whether the screencast is rolling yet (the
+  // video file does not grow while recording), and under load the first
+  // frame can land seconds after the page exists. So the beacon no longer
+  // relies on being seen from its first flash: seven flashes with strictly
+  // increasing gaps form a signature trim.mjs recognises from ANY three
+  // consecutive flashes it finds. A screencast that started late still
+  // yields the anchor; one that missed every flash stops the take in trim.
   await page.evaluate(() => { document.documentElement.style.background = "#ffffff"; });
-  await page.waitForTimeout(600); // let the white state reach the recording
+  await page.waitForTimeout(1500); // let the page exist and the white state settle
   const flips = [];
-  flips.push(await flip("#ff00ff")); // onset 1: white -> magenta
-  await page.waitForTimeout(400);
-  flips.push(await flip("#ffffff")); // onset 2: magenta -> white
-  await page.waitForTimeout(400);
+  let color = "#ff00ff";
+  for (const gapMs of BEACON_GAPS_MS) {
+    flips.push(await flip(color));
+    color = color === "#ff00ff" ? "#ffffff" : "#ff00ff";
+    await page.waitForTimeout(gapMs);
+  }
+  flips.push(await flip(color)); // final onset closes the last gap
+  if (color === "#ff00ff") { await page.waitForTimeout(250); flips.push(await flip("#ffffff")); }
+  await page.waitForTimeout(300);
   manifest.beacon = { flips };
   process.stdout.write(`beacon: flips at ${flips.map((f) => f.wall.toFixed(3)).join("s, ")}s (wall)\n`);
 } catch (e) {

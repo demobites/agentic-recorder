@@ -1,6 +1,6 @@
 {
   "name": "demobite",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "The DemoBites agentic recorder — you prompt, it films a real browser, and DemoBites turns the take into an editable demo bite.",
   "bin": {
     "demobite": "launcher/index.mjs"

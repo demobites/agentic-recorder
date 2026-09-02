@@ -272,6 +272,12 @@ if (!anchored && (median < -0.15 || median > 0.9)) {
   );
   process.exit(1);
 }
+if (anchored && (median < -0.6 || median > 2.5)) {
+  // INCIDENT 2026-09-02: +4.6 s "latency" on an anchored clock was the head
+  // miscut showing through (the anchors had locked onto the wrong beat).
+  console.error(`VERIFY FAILED: median click latency ${median.toFixed(3)}s on an anchor-measured clock is not an app delay, it is a broken timebase (the cut point or the anchor lock is wrong). Do not upload — film again.`);
+  process.exit(1);
+}
 if (anchored && (median < -0.15 || median > 0.9)) {
   console.log(`note: median click latency ${median.toFixed(3)}s is unusual, but the clock is anchor-measured — likely a genuinely slow app response. Judge the take on duration and feel.`);
 }
