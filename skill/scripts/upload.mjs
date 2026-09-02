@@ -29,6 +29,12 @@ if (!dir) {
   console.error("Usage: node upload.mjs <takeDir>");
   process.exit(2);
 }
+// RE-TAKE (2026-09-02): `--retake-of <biteId>` stages this take as a NEW RECORDING
+// of an existing bite instead of a new bite. The server keeps the bite's current
+// narration text, voice, intro/outro and look; the human approves in-app.
+const retakeIdx = process.argv.indexOf("--retake-of");
+const retakeOfBiteId = retakeIdx >= 0 ? Number(process.argv[retakeIdx + 1]) : null;
+if (retakeIdx >= 0 && !(Number.isInteger(retakeOfBiteId) && retakeOfBiteId > 0)) { console.error("--retake-of needs a bite id"); process.exit(2); }
 const cfgPath = path.resolve(".recorder", "config.json");
 let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8")); } catch {}
@@ -128,6 +134,7 @@ if (!zipped) {
 fs.rmSync(staging, { recursive: true, force: true });
 const sizeBytes = fs.statSync(zipPath).size;
 console.log(`take.zip ready (${(sizeBytes / 1024 / 1024).toFixed(1)} MB, ${zipped ? "system zip" : "store method"})`);
+if (retakeOfBiteId) console.log(`Staging as a RE-TAKE of bite ${retakeOfBiteId} — the new recording replaces the current one inside that bite once approved.`);
 
 // ── stage ──────────────────────────────────────────────────────────────────
 const authHeaders = { Authorization: `Bearer ${cfg.api_key}`, "Content-Type": "application/json" };
@@ -137,7 +144,7 @@ try {
   stageRes = await fetch(`${base}/api/recorder/stage`, {
     method: "PUT",
     headers: authHeaders,
-    body: JSON.stringify({ filename: "take.zip", sizeBytes, previewSizeBytes, manifest, ...(recipe ? { recipe } : {}) }),
+    body: JSON.stringify({ filename: "take.zip", sizeBytes, previewSizeBytes, manifest, ...(recipe ? { recipe } : {}), ...(retakeOfBiteId ? { retakeOfBiteId } : {}) }),
   });
 } catch (e) {
   console.error(`Could not reach ${base}: ${e.message}`);

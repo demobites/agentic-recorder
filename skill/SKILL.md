@@ -236,6 +236,30 @@ What the human approves on that page is the **picture and the coverage**, never 
 
 `upload.mjs` now polls `/api/recorder/status` until the bite reaches `completed` and prints what actually landed. **Read that line before you say anything to the human.** It reports `narrationReady/narrationTotal` segments with real audio behind them, and the camera shot count. If narration is 0, or ready is below total, or shots are 0, say so plainly and investigate. Do not pass on a link with a warning above it as though it were a success.
 
+## Phase 7: Re-take (Launch plan and up)
+
+A bite filmed by this recorder carries its recipe (storyboard, config, manifest) inside DemoBites. When the
+human's app changes, they do not re-record: they ask for a **re-take**, and the same story is filmed again
+against today's app and landed **inside the same bite**. Links, analytics, the bite's current narration text
+(their edits win over the original intent), voice, intro/outro and look are preserved; camera, cuts and audio
+are refitted by the ingestion.
+
+```bash
+node scripts/retake.mjs <biteId> [--note "what changed"]   # or: npx demobite retake <biteId> --note "..."
+```
+
+Laws for a re-take:
+- **Read the note first.** "We moved Export to the header" tells you which step will break before you film.
+- **A step that no longer resolves stops the take at that step.** Look at the live page. If the control moved,
+  fix the selector in the take's `storyboard.json` and run again with `--take <dir>`. If the feature is truly
+  gone, DROP that beat AND its narration line, and tell the human plainly: "This capability no longer exists,
+  we removed it from the video." Nothing stages until every step resolves.
+- **The narration in the recipe is the ORIGINAL intent.** Do not rewrite it to taste: the server replaces it
+  with the bite's current text per step. Only remove lines whose beats you dropped.
+- **Same pacing laws apply** (intro, narrate the path, linger, cut and fade on page transitions).
+- **The human approves in-app.** The preview page says "Re-take of <bite>". Approve replaces the recording in
+  that bite; the previous recording is kept for rollback, never overwritten.
+
 ## The wire manifest (fixed contract, version 2)
 
 `manifest.mjs` produces exactly this shape. All times are relative to the UPLOADED file (record_from already subtracted, clamped at 0). `duration` is the duration of the uploaded clean.mp4.
@@ -280,8 +304,11 @@ PUT <base>/api/recorder/device  { device_code }          (poll every `interval` 
 DELETE <base>/api/recorder/key  (Authorization: Bearer <api_key>)
   -> { revoked: true }                                    (logout)
 
+GET <base>/api/recorder/recipe?biteId=<id>  (Authorization: Bearer <api_key>)   // RE-TAKE: the bite's recipe
+  -> { storyboard, config:{app,url,frame}, manifest, engine }   (404 no recipe; 402/403 plan gate)
+
 PUT <base>/api/recorder/stage  (Authorization: Bearer <api_key>)
-  { filename, sizeBytes, previewSizeBytes, manifest, recipe? }
+  { filename, sizeBytes, previewSizeBytes, manifest, recipe? }, retakeOfBiteId? }
   // recipe = { version:1, lane:'skill', engine, storyboard, config:{app,url,frame,base} } — the RE-TAKE DNA (never the api_key)
   -> { stagingId, uploadUrl, previewUploadUrl, videoKey, previewUrl }
 
