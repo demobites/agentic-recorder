@@ -131,10 +131,20 @@ console.log(`calibrate: map video = ${tb.a} * wall + ${tb.b.toFixed(3)} (${tb.me
 console.log(`calibrate: ${anchors.length} hover anchor${anchors.length === 1 ? "" : "s"} usable`);
 
 let anchored = false;
+// BEACON OUTRANKS ANCHORS (2026-09-02, second prod bite-96 take): the head
+// beacon had measured the cut to +-14 ms, yet ONE hover anchor locked onto a
+// stray pixel change 2.66 s away and dragged the clock with it. When the
+// beacon has spoken (trim stamped beaconDelta from >=3 matched flashes),
+// anchors may only REFINE the clock inside a third of a second; they never
+// re-decide it. Without a beacon the wide sweep stays (the pre-beacon world).
+const beaconAnchored = typeof tb?.beaconDelta === "number";
+const SWEEP_LO = beaconAnchored ? -0.35 : -3.0;
+const SWEEP_HI = beaconAnchored ? 0.35 : 1.0;
+if (beaconAnchored) console.log(`calibrate: beacon-anchored clock — hover anchors may refine by at most ${SWEEP_HI.toFixed(2)}s`);
 if (anchors.length >= 2) {
   const TOL = 0.067; // two frames
   let best = { delta: 0, score: -1, resid: Infinity };
-  for (let d = -3.0; d <= 1.0001; d += 1 / 60) {
+  for (let d = SWEEP_LO; d <= SWEEP_HI + 0.0001; d += 1 / 60) {
     let score = 0, resid = 0, hits = 0;
     for (const a of anchors) {
       const target = a.pred + d;
@@ -171,21 +181,27 @@ if (anchors.length >= 2) {
         console.log(`  anchor ${a.label}: no flip within tolerance at this offset (skipped)`);
       }
     }
-    const rms = Math.sqrt(residuals.reduce((s, r) => s + r * r, 0) / residuals.length);
-    if (rms > 0.08) {
+    if (residuals.length < 2) {
+      // One surviving anchor is an opinion, not a measurement.
+      console.log(`calibrate: only ${residuals.length} anchor survived the lock — clock left ${beaconAnchored ? "on the beacon" : "as stamped"}.`);
+      anchored = beaconAnchored;
+      best.delta = 0;
+    }
+    const rms = residuals.length >= 2 ? Math.sqrt(residuals.reduce((s, r) => s + r * r, 0) / residuals.length) : 0;
+    if (residuals.length >= 2 && rms > 0.08) {
       console.error(`CALIBRATE FAILED: hover-anchor rms ${(rms * 1000).toFixed(0)}ms exceeds 80ms — footage disagrees with itself. Do not upload.`);
       process.exit(1);
     }
-    if (Math.abs(best.delta) > 0.005) {
+    if (residuals.length >= 2 && Math.abs(best.delta) > 0.005) {
       tb.b += best.delta;
       tb.videoRecordFrom = -tb.b;
       tb.method += ` + hover-anchor ${best.delta.toFixed(3)}s (${best.hits} anchors, rms ${(rms * 1000).toFixed(0)}ms)`;
       fs.writeFileSync(manPath, JSON.stringify(man, null, 2));
       console.log(`calibrate: hover anchors moved the clock ${best.delta.toFixed(3)}s — b is now ${tb.b.toFixed(3)} (rms ${(rms * 1000).toFixed(0)}ms)`);
-    } else {
+    } else if (residuals.length >= 2) {
       console.log(`calibrate: hover anchors confirm the stamp as-is (rms ${(rms * 1000).toFixed(0)}ms)`);
     }
-    anchored = true;
+    if (residuals.length >= 2) anchored = true;
   }
 }
 
@@ -221,6 +237,8 @@ if (scenes.length === 0) {
   process.exit(0);
 }
 
+const SWEEP_LO_FB = beaconAnchored ? -0.35 : -4;
+const SWEEP_HI_FB = beaconAnchored ? 0.35 : 1.0;
 if (!anchored) {
   // Old plausible-latency search. Kept ONLY as the no-anchor fallback; its
   // known failure mode (plausible != true, 0.237s off on a real take) is why
@@ -237,7 +255,7 @@ if (!anchored) {
     return total;
   };
   let bestDelta = 0, bestScore = score(0);
-  for (let d = -4; d <= 1.0001; d += 1 / 30) {
+  for (let d = SWEEP_LO_FB; d <= SWEEP_HI_FB + 0.0001; d += 1 / 30) {
     const sc = score(d);
     if (sc < bestScore - 1e-9) { bestScore = sc; bestDelta = d; }
   }
@@ -272,11 +290,14 @@ if (!anchored && (median < -0.15 || median > 0.9)) {
   );
   process.exit(1);
 }
-if (anchored && (median < -0.6 || median > 2.5)) {
+if (!beaconAnchored && anchored && (median < -0.6 || median > 2.5)) {
   // INCIDENT 2026-09-02: +4.6 s "latency" on an anchored clock was the head
   // miscut showing through (the anchors had locked onto the wrong beat).
   console.error(`VERIFY FAILED: median click latency ${median.toFixed(3)}s on an anchor-measured clock is not an app delay, it is a broken timebase (the cut point or the anchor lock is wrong). Do not upload — film again.`);
   process.exit(1);
+}
+if (beaconAnchored && (median < -0.6 || median > 2.5)) {
+  console.log(`WARNING: median click latency ${median.toFixed(3)}s on a beacon-measured clock — the clock is trusted, so the app genuinely answered late. The footage shows the wait; judge whether the beat reads as slow.`);
 }
 if (anchored && (median < -0.15 || median > 0.9)) {
   console.log(`note: median click latency ${median.toFixed(3)}s is unusual, but the clock is anchor-measured — likely a genuinely slow app response. Judge the take on duration and feel.`);
