@@ -40,15 +40,19 @@ const DIR = path.resolve(outArg);
 // RE-TAKE (founder 2026-09-02): the storyboard IS the bite's DNA. Keep a verbatim
 // copy in the take dir so upload.mjs can stage it as the recording recipe —
 // selectors, urls, typed text, hideCss — the wire manifest alone cannot re-film.
-const ENGINE_VERSION = "1.0.6";
+const ENGINE_VERSION = "1.0.7";
 fs.mkdirSync(DIR, { recursive: true });
-fs.writeFileSync(path.join(DIR, "storyboard.json"), JSON.stringify(STORYBOARD, null, 2));
+// The copy is the RECIPE, not the transport: cdpWsUrl / storageStatePath are
+// per-take plumbing stamped by the cloud runner (a CDP url carries a session
+// token) — never persisted, never staged.
+const { cdpWsUrl: _cdpStamp, storageStatePath: _ssStamp, ...recipeStoryboard } = STORYBOARD;
+fs.writeFileSync(path.join(DIR, "storyboard.json"), JSON.stringify(recipeStoryboard, null, 2));
 try {
   const cfgPath = path.resolve(".recorder/config.json");
   const cfg = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, "utf8")) : {};
   // Only the public shape — NEVER the api_key or workspace.
   const config = { app: STORYBOARD.app ?? cfg.app ?? null, url: STORYBOARD.url ?? cfg.url ?? null, frame: cfg.frame ?? { width: 1920, height: 1080 }, base: cfg.base ?? "https://app.demobites.com" };
-  fs.writeFileSync(path.join(DIR, "recipe.json"), JSON.stringify({ version: 1, lane: "skill", engine: ENGINE_VERSION, config }, null, 2));
+  fs.writeFileSync(path.join(DIR, "recipe.json"), JSON.stringify({ version: 1, lane: (process.env.CDP_WS_URL || STORYBOARD.cdpWsUrl) ? "cloud" : "skill", engine: ENGINE_VERSION, config }, null, 2));
 } catch (e) { console.error("recipe.json not written:", e.message); }
 fs.mkdirSync(DIR, { recursive: true });
 
@@ -158,17 +162,54 @@ const launchOpts = {
   deviceScaleFactor: 1,
   args: ["--force-color-profile=srgb", "--disable-blink-features=AutomationControlled"],
 };
+
+// THREE ways to get a browser. ONE script serves both lanes — the cloud
+// sandbox runs THIS file. (2026-09-02: a sync that carried only mode C into
+// the sandbox copy crashed every cloud film leg ~85 s after bootstrap.)
+//  A. CDP mode (CDP_WS_URL env or storyboard.cdpWsUrl): connect to a browser
+//     someone else PROVISIONED (Surfsky / Browserbase / sandbox endpoint) and
+//     film in a fresh recording context on it. Never creates or tears down
+//     the remote browser — the provisioner owns it. A connected browser has
+//     no persistent-context video, so newContext({recordVideo}) is the way.
+//  B. Storage-state mode (STORAGE_STATE env or storyboard.storageStatePath,
+//     no CDP): a signed-in take. The caller decrypts a vaulted Playwright
+//     storageState ({cookies, origins:[{origin, localStorage}]}) to a file
+//     and hands us the path; we launch our OWN browser and load that session
+//     into a fresh recording context. The file is opaque here — loaded,
+//     never logged or copied. storageState is per context, so it also rides
+//     into mode A's context when both are set.
+//  C. Launch mode (default): the local persistent Chrome for public urls.
 let ctx;
+let connectedBrowser = null;
+let ownedBrowser = null;
+const cdpWsUrl = process.env.CDP_WS_URL || STORYBOARD.cdpWsUrl || null;
+const storageStatePath = process.env.STORAGE_STATE || STORYBOARD.storageStatePath || null;
+const contextOpts = {
+  viewport: VIEW,
+  recordVideo: { dir: DIR, size: VIEW },
+  deviceScaleFactor: 1,
+  ...(storageStatePath ? { storageState: storageStatePath } : {}),
+};
 const wantChannel = STORYBOARD.channel ?? "chrome";
-try {
-  ctx = await chromium.launchPersistentContext(
-    profileDir,
-    wantChannel === "chromium" ? launchOpts : { ...launchOpts, channel: wantChannel },
-  );
-} catch (launchErr) {
-  if (wantChannel === "chromium") throw launchErr;
-  console.error(`Real Chrome (channel '${wantChannel}') failed to launch (${launchErr.message.split("\n")[0]}); falling back to bundled Chromium.`);
-  ctx = await chromium.launchPersistentContext(profileDir, launchOpts);
+const launchWithFallback = async (launch) => {
+  try {
+    return await launch(wantChannel === "chromium" ? {} : { channel: wantChannel });
+  } catch (launchErr) {
+    if (wantChannel === "chromium") throw launchErr;
+    console.error(`Real Chrome (channel '${wantChannel}') failed to launch (${launchErr.message.split("\n")[0]}); falling back to bundled Chromium.`);
+    return await launch({});
+  }
+};
+if (cdpWsUrl) {
+  connectedBrowser = await chromium.connectOverCDP(cdpWsUrl);
+  ctx = await connectedBrowser.newContext(contextOpts);
+  console.error(`CDP mode: filming in a provided context (${connectedBrowser.contexts().length - 1} pre-existing)${storageStatePath ? ", signed-in session loaded" : ""}.`);
+} else if (storageStatePath) {
+  ownedBrowser = await launchWithFallback((ch) => chromium.launch({ headless: launchOpts.headless, args: launchOpts.args, ...ch }));
+  ctx = await ownedBrowser.newContext(contextOpts);
+  console.error("Storage-state mode: own browser, signed-in session loaded into a fresh recording context.");
+} else {
+  ctx = await launchWithFallback((ch) => chromium.launchPersistentContext(profileDir, { ...launchOpts, ...ch }));
 }
 const page = ctx.pages()[0] || (await ctx.newPage());
 
@@ -329,6 +370,21 @@ const pushShot = (box, tStart, tEnd, label, extra) => {
   });
 };
 
+// User-approved zoom (storyboard flow 2026-08-20, cloud planner + storyboard
+// page): a step may carry zoom {x,y,w,h} in PERCENT of the frame, adjusted by
+// the customer before filming. It overrides the auto shot box. zoom:null means
+// the customer removed the zoom — NO shot for that step. Absent = classic auto.
+const userShotBox = (step, fallback) => {
+  if (step.zoom === null) return null;
+  if (!step.zoom) return fallback ?? null;
+  return {
+    x: (step.zoom.x / 100) * VIEW.width,
+    y: (step.zoom.y / 100) * VIEW.height,
+    width: (step.zoom.w / 100) * VIEW.width,
+    height: (step.zoom.h / 100) * VIEW.height,
+  };
+};
+
 /** LAW (visible-instance pick, dry-run lesson): sticky-header twins and
  *  offscreen duplicates shadow the real control — take the first VISIBLE match
  *  whose top clears minY, retrying while the page settles. */
@@ -337,8 +393,10 @@ async function visibleTarget(selector, minY = 0, timeout = 15000) {
   const waitT0 = Date.now();
   const all = page.locator(selector);
   await all.first().waitFor({ state: "attached", timeout }).catch(() => {});
+  let scrollCorrections = 0;
   for (let tries = 0; tries < 20; tries++) {
     const n = await all.count().catch(() => 0);
+    let offVerticalEl = null; // a visible instance that's only off-frame vertically
     for (let i = 0; i < n; i++) {
       const el = all.nth(i);
       if (!(await el.isVisible().catch(() => false))) continue;
@@ -350,9 +408,25 @@ async function visibleTarget(selector, minY = 0, timeout = 15000) {
       // cursor 360px off the 1920 frame and the click landed off-camera.
       // A target's CENTER must be inside the recorded frame, with margin.
       const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
-      if (cx < 8 || cx > VIEW.width - 8 || cy < 8 || cy > VIEW.height - 8) continue;
+      const offHoriz = cx < 8 || cx > VIEW.width - 8;
+      const offVert = cy < 8 || cy > VIEW.height - 8;
+      if (offHoriz) continue; // a horizontal strip — vertical scroll won't fix it
+      if (offVert) { if (!offVerticalEl) offVerticalEl = el; continue; }
       // Return the ELEMENT alongside its box so callers never re-scan.
       if (b.y >= minY * SUPERSAMPLE) { visibleTarget.lastWaitMs = Date.now() - waitT0; return { box: b, el }; }
+    }
+    // ROBUSTNESS (authored-tour scroll drift): a hover/click target the author
+    // named but the authored scroll amounts did not land in the frame is a
+    // below/above-fold instance. Travel to it — scroll it toward the upper
+    // third and re-scan — instead of failing the whole take. Bounded so a
+    // genuinely-unreachable target still ends the loop. This is the camera
+    // following the subject, not a camera-path change.
+    if (offVerticalEl && scrollCorrections < 3) {
+      scrollCorrections++;
+      await offVerticalEl.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
+      await page.evaluate(() => window.scrollBy(0, -Math.round(window.innerHeight * 0.28))).catch(() => {});
+      await page.waitForTimeout(450);
+      continue;
     }
     await page.waitForTimeout(500);
   }
@@ -541,6 +615,49 @@ async function smoothScroll(dy, ms = 1400, within = null) {
   }), [dy, ms, within]);
 }
 
+// ── Head beacon ────────────────────────────────────────────────────────────
+// The identity law (video = wall - record_from) assumes raw.webm's t=0 lines
+// up with T0. That anchoring is otherwise UNMEASURED: on a cold remote-CDP
+// browser it drifts by seconds (the 2026-08-21 Product Hunt class) and even
+// locally the startup lead swings 0–2.5 s between takes (2026-09-02). So
+// MEASURE it: flash the still-blank page full-frame at stamped wall times
+// before any content loads. trim.mjs finds the flashes in raw.webm by scene
+// detection and corrects the cut point; both flashes sit before record_from,
+// so the published cut never contains them. Hover-anchor calibration then
+// measures only the residual.
+try {
+  const flip = async (color) => {
+    const before = t();
+    await page.evaluate((c) => { document.documentElement.style.background = c; }, color);
+    const after = t();
+    // The paint happened between call and return; the midpoint bounds the
+    // stamp error at half a CDP round trip — inside one frame co-located.
+    return { color, wall: (before + after) / 2 };
+  };
+  // Wait for the screencast to actually be ROLLING (first frames on disk):
+  // over a remote CDP link the recorder starts late, and a flash before the
+  // first frame is invisible (mode A smoke, 2026-09-02).
+  const rollDeadline = Date.now() + 5000;
+  while (Date.now() < rollDeadline) {
+    const rolling = fs.readdirSync(DIR).some((f) => f.endsWith(".webm") && fs.statSync(path.join(DIR, f)).size > 4096);
+    if (rolling) break;
+    await page.waitForTimeout(100);
+  }
+  await page.evaluate(() => { document.documentElement.style.background = "#ffffff"; });
+  await page.waitForTimeout(600); // let the white state reach the recording
+  const flips = [];
+  flips.push(await flip("#ff00ff")); // onset 1: white -> magenta
+  await page.waitForTimeout(400);
+  flips.push(await flip("#ffffff")); // onset 2: magenta -> white
+  await page.waitForTimeout(400);
+  manifest.beacon = { flips };
+  process.stdout.write(`beacon: flips at ${flips.map((f) => f.wall.toFixed(3)).join("s, ")}s (wall)\n`);
+} catch (e) {
+  // A failed beacon must never kill a take — trim just falls back to the
+  // stamped anchor, exactly the pre-beacon behavior.
+  console.error("beacon: skipped (" + e.message.split("\n")[0] + ")");
+}
+
 let failure = null;
 try {
   for (const step of STORYBOARD.steps) {
@@ -557,7 +674,10 @@ try {
     process.stdout.write(`step ${rec.n} ${step.action} ${step.label ?? ""}\n`);
     if (step.action === "goto") {
       const navIssuedAt = t();
-      await page.goto(step.url, { waitUntil: "load" });
+      // domcontentloaded, not load: a heavy site behind a proxy (the cloud
+      // browser) can stall `load` 45 s+ on third-party subresources.
+      // record_from / nav.to are still stamped after the paint gates below.
+      await page.goto(step.url, { waitUntil: "domcontentloaded", timeout: 60000 });
       await ensureCursor();
       await applyHideCss();
       if (manifest.record_from !== undefined) {
@@ -637,15 +757,32 @@ try {
       await page.waitForTimeout(settleMs);
       if (step.focus) {
         const box = await visibleBox(step.focus, step.minY ?? 0, 4000);
-        pushShot(box, shotStart, t(), step.label, { n: rec.n });
+        pushShot(userShotBox(step, box), shotStart, t(), step.label, { n: rec.n });
+      } else if (step.zoom) {
+        pushShot(userShotBox(step, null), shotStart, t(), step.label, { n: rec.n });
       }
     } else if (step.action === "scroll") {
       // scrollTo distances are ALSO zoomed-space under CSS zoom (measured:
       // scrollTo(0,600) moves 300 design px) — storyboards speak design px.
+      const shotStart = t();
       await smoothScroll(step.dy * SUPERSAMPLE, ms(step.ms, 1400), step.within ?? null);
+      if (step.zoom) pushShot(userShotBox(step, null), shotStart, t(), step.label, { n: rec.n });
     } else if (step.action === "click" || step.action === "hover") {
-      const { box, el } = await visibleTarget(step.selector, step.minY ?? 0);
-      if (!box) throw new Error("no visible target for " + step.selector);
+      const { box, el } = await visibleTarget(step.selector, step.minY ?? 0, step.action === "hover" ? 8000 : 15000);
+      if (!box) {
+        if (step.action === "hover") {
+          // Storyboard resilience (2026-08-20): a showcase hover whose target
+          // vanished between plan time and film time must not kill the take —
+          // the customer approved a tour, not a selector. Skip the beat and
+          // keep filming; the shot simply never happens.
+          console.log(`MISSING TARGET (hover, skipped): step ${rec.n} ${step.selector}`);
+          rec.skipped = "missing_target";
+          rec.t_end = t();
+          manifest.steps.push(rec);
+          continue;
+        }
+        throw new Error("no visible target for " + step.selector);
+      }
       // SLOW-CONTENT STAMP (Reddit lesson 2026-08-09): a long target wait
       // means the app was loading ON CAMERA — the viewer watched skeletons.
       // The take still completes; the stamp makes the dead air visible at
@@ -698,7 +835,7 @@ try {
         // that, and the same ballistic motion read stiffer for it. The shot
         // begins just before ARRIVAL, so the previous frame holds still
         // while the cursor sweeps across it, then the camera reframes.
-        pushShot(step.focus ? await visibleBox(step.focus, 0, 3000) : box, Math.max(shotStart, arrivalT - 0.3), t(), step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
+        pushShot(userShotBox(step, step.focus ? await visibleBox(step.focus, 0, 3000) : box), Math.max(shotStart, arrivalT - 0.3), t(), step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
       } else {
         await page.waitForTimeout(ms(step.dwell, DEFAULT_CLICK_DWELL));
         await page.evaluate(([a, b]) => window.__recPulse?.(a, b), [x, y]);
@@ -715,7 +852,7 @@ try {
         }
         // Shot one: the control — beginning near ARRIVAL (see the camera
         // choreography law above), never spanning the approach glide.
-        pushShot(box, Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
+        pushShot(userShotBox(step, box), Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
         // LAW (press physics, founder 2026-08-09): a press has a down and an
         // up — but the up only exists if the clicked surface is still there.
         // A menu item or modal button that DESTROYS itself on click gets a
@@ -840,12 +977,24 @@ try {
         await page.keyboard.type(ch);
         await page.waitForTimeout(34 + Math.random() * 70);
       }
-      if (step.enter) {
+      if (step.enter || step.submit) {
+        // `enter` is the skill's spelling, `submit` the cloud planner's.
         await page.waitForTimeout(300);
+        const urlBefore = page.url();
         await page.keyboard.press("Enter");
+        // A submit usually navigates: re-arm the presenter layer on the new
+        // document, exactly like a goto — otherwise the cursor vanishes for
+        // the rest of the take.
+        await page.waitForLoadState("domcontentloaded", { timeout: 30000 }).catch(() => {});
+        if (page.url() !== urlBefore) {
+          await page.waitForLoadState("networkidle", { timeout: 6000 }).catch(() => {});
+          await ensureCursor();
+          await applyHideCss();
+          await page.evaluate(([a, b]) => window.__recSetCursor?.(a, b), [x, y]);
+        }
       }
       // One shot: the field, from arrival through the typing.
-      pushShot(box, Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label ?? "type", { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
+      pushShot(userShotBox(step, box), Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label ?? "type", { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
       currentCursor = await cursorUnderPoint();
       pushMouse("move", cx, cy);
       await page.waitForTimeout(ms(step.after, DEFAULT_CLICK_AFTER));
@@ -879,6 +1028,11 @@ if (video) {
   const vpath = await video.path();
   fs.renameSync(vpath, path.join(DIR, "raw.webm"));
 }
+// CDP mode: disconnect from the provided browser WITHOUT killing it — the
+// provisioner owns the remote browser's lifecycle, not us. Mode B's browser
+// is ours to close.
+if (connectedBrowser) { try { await connectedBrowser.close(); } catch {} }
+if (ownedBrowser) { try { await ownedBrowser.close(); } catch {} }
 fs.writeFileSync(path.join(DIR, "manifest.json"), JSON.stringify(manifest, null, 2));
 if (failure) {
   console.error(`TAKE FAILED at step ${manifest.steps.length + 1}: ${failure.message}`);

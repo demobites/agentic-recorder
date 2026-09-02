@@ -8,7 +8,7 @@
 // Usage: node trim.mjs <takeDir>
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 
 const dir = process.argv[2];
 if (!dir) {
@@ -46,20 +46,62 @@ const clean = path.join(dir, "clean.mp4");
 // took 0.49s to load tilted 0.897x. Both produced ramps of error that read as
 // a broken cursor.
 const r0 = man.record_from ?? 0;
+
+// Head-beacon phase 0: the identity law above fixes the RATE; the beacon
+// fixes the ANCHOR. record.mjs flashed the blank page full-frame at stamped
+// wall times before any content loaded; find those flashes in raw.webm and
+// the difference (stamped wall - observed video time) is the exact anchoring
+// error between t()-space and the video timeline — near zero on a warm local
+// browser, whole seconds on a cold remote-CDP one (2026-08-21 PH class).
+// Shift the cut by it so clean.mp4 truly begins at the record_from moment.
+let beaconDelta = 0;
+let beaconMethod = "";
+if ((man.beacon?.flips?.length ?? 0) >= 2) {
+  const flips = man.beacon.flips;
+  // The flashes are the first big whole-frame changes in the head. Search a
+  // window generous enough for seconds of anchor error in either direction.
+  const searchEnd = Math.min(Math.max(r0, flips[flips.length - 1].wall) + 8, 40);
+  const res = spawnSync("ffmpeg", [
+    "-loglevel", "info", "-t", String(searchEnd), "-i", raw,
+    "-vf", "select='gt(scene,0.3)',showinfo", "-f", "null", "-",
+  ], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const onsets = [...`${res.stderr ?? ""}`.matchAll(/pts_time:([0-9.]+)/g)]
+    .map((m) => parseFloat(m[1]));
+  if (onsets.length >= 2) {
+    // Pair the first two onsets to the two flips, in order. Anything the page
+    // paints later (the goto) lands after onset 2 and never enters the pair.
+    const d1 = flips[0].wall - onsets[0];
+    const d2 = flips[1].wall - onsets[1];
+    const spread = Math.abs(d1 - d2);
+    if (spread <= 0.15) {
+      beaconDelta = (d1 + d2) / 2;
+      beaconMethod = ` + head-beacon anchor ${beaconDelta >= 0 ? "+" : ""}${beaconDelta.toFixed(3)}s (2 flips, spread ${(spread * 1000).toFixed(0)}ms)`;
+      console.log(`beacon: anchor error ${beaconDelta >= 0 ? "+" : ""}${beaconDelta.toFixed(3)}s measured (flip spread ${(spread * 1000).toFixed(0)}ms) — cut corrected`);
+    } else {
+      console.log(`beacon: flip deltas disagree (${(spread * 1000).toFixed(0)}ms spread) — ignoring beacon, cut stays as stamped`);
+    }
+  } else {
+    console.log("beacon: flashes not found in the raw head — cut stays as stamped");
+  }
+}
+
+const cutAt = Math.max(0, r0 - beaconDelta);
+if (cutAt !== r0 - beaconDelta) console.log("beacon: corrected cut clamped at 0 — head shorter than the anchor error");
 man.timebase = {
   a: 1,
   b: -r0,
-  method: "identity (raw is wall-rate; see 2026-08-09 four-lane verification)",
+  method: "identity (raw is wall-rate; see 2026-08-09 four-lane verification)" + beaconMethod,
   k: 1,
   videoRecordFrom: r0,
+  ...(beaconMethod ? { beaconDelta } : {}),
 };
 fs.writeFileSync(manPath, JSON.stringify(man, null, 2));
-console.log(`timebase: identity, video = wall - ${r0.toFixed(3)}`);
+console.log(`timebase: identity, video = wall - ${r0.toFixed(3)}${beaconMethod ? ` (cut at raw ${cutAt.toFixed(3)}s)` : ""}`);
 
 execFileSync("ffmpeg", [
   "-y", "-loglevel", "error",
   "-i", raw,
-  "-filter_complex", `[0:v]trim=start=${r0},setpts=PTS-STARTPTS,fps=30,format=yuv420p[out]`,
+  "-filter_complex", `[0:v]trim=start=${cutAt},setpts=PTS-STARTPTS,fps=30,format=yuv420p[out]`,
   "-map", "[out]",
   "-c:v", "libx264", "-preset", "medium", "-crf", "19",
   "-movflags", "+faststart",
