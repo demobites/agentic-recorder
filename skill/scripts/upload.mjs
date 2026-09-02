@@ -40,6 +40,19 @@ const base = cfg.base.replace(/\/+$/, "");
 
 const cleanPath = path.join(dir, "clean.mp4");
 const wirePath = path.join(dir, "manifest.demobites.json");
+// Recording recipe (RE-TAKE, 2026-09-02): storyboard + public config, written by
+// record.mjs. Staged next to the manifest so the bite can be re-filmed later.
+// Absent on takes filmed by older engines — staging still works without it.
+let recipe = null;
+try {
+  const sbPath = path.join(dir, "storyboard.json");
+  const rcPath = path.join(dir, "recipe.json");
+  if (fs.existsSync(sbPath)) {
+    const rc = fs.existsSync(rcPath) ? JSON.parse(fs.readFileSync(rcPath, "utf8")) : {};
+    recipe = { version: 1, lane: rc.lane ?? "skill", engine: rc.engine ?? null, storyboard: JSON.parse(fs.readFileSync(sbPath, "utf8")), config: rc.config ?? {} };
+    if (recipe.config && "api_key" in recipe.config) delete recipe.config.api_key;
+  }
+} catch (e) { console.error("recipe skipped:", e.message); }
 if (!fs.existsSync(cleanPath)) { console.error(`${cleanPath} not found. Run: node scripts/trim.mjs ${dir}`); process.exit(1); }
 if (!fs.existsSync(wirePath)) { console.error(`${wirePath} not found. Run: node scripts/manifest.mjs ${dir}`); process.exit(1); }
 const manifest = JSON.parse(fs.readFileSync(wirePath, "utf8"));
@@ -124,7 +137,7 @@ try {
   stageRes = await fetch(`${base}/api/recorder/stage`, {
     method: "PUT",
     headers: authHeaders,
-    body: JSON.stringify({ filename: "take.zip", sizeBytes, previewSizeBytes, manifest }),
+    body: JSON.stringify({ filename: "take.zip", sizeBytes, previewSizeBytes, manifest, ...(recipe ? { recipe } : {}) }),
   });
 } catch (e) {
   console.error(`Could not reach ${base}: ${e.message}`);

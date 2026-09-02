@@ -36,6 +36,20 @@ for (const [i, s] of STORYBOARD.steps.entries()) {
 }
 
 const DIR = path.resolve(outArg);
+
+// RE-TAKE (founder 2026-09-02): the storyboard IS the bite's DNA. Keep a verbatim
+// copy in the take dir so upload.mjs can stage it as the recording recipe —
+// selectors, urls, typed text, hideCss — the wire manifest alone cannot re-film.
+const ENGINE_VERSION = "1.0.6";
+fs.mkdirSync(DIR, { recursive: true });
+fs.writeFileSync(path.join(DIR, "storyboard.json"), JSON.stringify(STORYBOARD, null, 2));
+try {
+  const cfgPath = path.resolve(".recorder/config.json");
+  const cfg = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, "utf8")) : {};
+  // Only the public shape — NEVER the api_key or workspace.
+  const config = { app: STORYBOARD.app ?? cfg.app ?? null, url: STORYBOARD.url ?? cfg.url ?? null, frame: cfg.frame ?? { width: 1920, height: 1080 }, base: cfg.base ?? "https://app.demobites.com" };
+  fs.writeFileSync(path.join(DIR, "recipe.json"), JSON.stringify({ version: 1, lane: "skill", engine: ENGINE_VERSION, config }, null, 2));
+} catch (e) { console.error("recipe.json not written:", e.message); }
 fs.mkdirSync(DIR, { recursive: true });
 
 // LAW (supersampled capture, measured 2026-08-09): deviceScaleFactor is a

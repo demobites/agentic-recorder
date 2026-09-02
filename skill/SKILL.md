@@ -281,7 +281,8 @@ DELETE <base>/api/recorder/key  (Authorization: Bearer <api_key>)
   -> { revoked: true }                                    (logout)
 
 PUT <base>/api/recorder/stage  (Authorization: Bearer <api_key>)
-  { filename, sizeBytes, previewSizeBytes, manifest }
+  { filename, sizeBytes, previewSizeBytes, manifest, recipe? }
+  // recipe = { version:1, lane:'skill', engine, storyboard, config:{app,url,frame,base} } — the RE-TAKE DNA (never the api_key)
   -> { stagingId, uploadUrl, previewUploadUrl, videoKey, previewUrl }
 
 GET <base>/api/recorder/stage?id=<stagingId>  (Authorization: Bearer <api_key>)
