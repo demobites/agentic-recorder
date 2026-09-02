@@ -40,7 +40,7 @@ const DIR = path.resolve(outArg);
 // RE-TAKE (founder 2026-09-02): the storyboard IS the bite's DNA. Keep a verbatim
 // copy in the take dir so upload.mjs can stage it as the recording recipe —
 // selectors, urls, typed text, hideCss — the wire manifest alone cannot re-film.
-const ENGINE_VERSION = "1.0.7";
+const ENGINE_VERSION = "1.0.8";
 fs.mkdirSync(DIR, { recursive: true });
 // The copy is the RECIPE, not the transport: cdpWsUrl / storageStatePath are
 // per-take plumbing stamped by the cloud runner (a CDP url carries a session

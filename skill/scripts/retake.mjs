@@ -72,5 +72,5 @@ r = run("trim.mjs", [takeDir]); if (r.status !== 0) process.exit(r.status ?? 1);
 r = run("calibrate.mjs", [takeDir]);
 if (r.status !== 0) { console.error("Calibration failed — do not stage this take. Investigate record_from / anchors and film again."); process.exit(3); }
 r = run("manifest.mjs", [takeDir]); if (r.status !== 0) process.exit(r.status ?? 1);
-r = run("upload.mjs", [takeDir, "--retake-of", String(biteId)]);
+r = run("upload.mjs", [takeDir, "--retake-of", String(biteId), ...(note ? ["--note", note] : [])]);
 process.exit(r.status ?? 0);

@@ -35,6 +35,11 @@ if (!dir) {
 const retakeIdx = process.argv.indexOf("--retake-of");
 const retakeOfBiteId = retakeIdx >= 0 ? Number(process.argv[retakeIdx + 1]) : null;
 if (retakeIdx >= 0 && !(Number.isInteger(retakeOfBiteId) && retakeOfBiteId > 0)) { console.error("--retake-of needs a bite id"); process.exit(2); }
+// `--note "<what changed>"` (device lane, founder 2026-09-02): the human's note
+// rides in recipe.config.retake_note so the in-app preview and the recording
+// history show why this version was filmed. Never a secret, never required.
+const noteIdx = process.argv.indexOf("--note");
+const retakeNote = noteIdx >= 0 ? String(process.argv[noteIdx + 1] ?? "").trim().slice(0, 600) : "";
 const cfgPath = path.resolve(".recorder", "config.json");
 let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8")); } catch {}
@@ -57,6 +62,7 @@ try {
     const rc = fs.existsSync(rcPath) ? JSON.parse(fs.readFileSync(rcPath, "utf8")) : {};
     recipe = { version: 1, lane: rc.lane ?? "skill", engine: rc.engine ?? null, storyboard: JSON.parse(fs.readFileSync(sbPath, "utf8")), config: rc.config ?? {} };
     if (recipe.config && "api_key" in recipe.config) delete recipe.config.api_key;
+    if (retakeNote) recipe.config = { ...(recipe.config ?? {}), retake_note: retakeNote };
   }
 } catch (e) { console.error("recipe skipped:", e.message); }
 if (!fs.existsSync(cleanPath)) { console.error(`${cleanPath} not found. Run: node scripts/trim.mjs ${dir}`); process.exit(1); }
