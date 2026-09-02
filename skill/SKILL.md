@@ -130,7 +130,7 @@ Storyboard schema:
 }
 ```
 
-Step fields: `action` is one of `goto | settle | scroll | click | hover`. `goto` needs `url`. `settle` takes `ms` and an optional `focus` selector. `scroll` needs `dy` and takes `ms`. `click`/`hover` need `selector` and take `minY` (minimum Y for the visible instance pick), `dwell`, `after`, `waitLoad`. Every step takes `label` and `narration`.
+Step fields: `action` is one of `goto | settle | scroll | click | hover | type | expect`. **Durations (`dwell`, `after`, settle `ms`, scroll `ms`) are milliseconds; a value under 60 is read as seconds** (write `"dwell": 3400` or `"dwell": 3.4`, never `"dwell": 3` meaning 3 ms). `goto` needs `url`. `settle` takes `ms` and an optional `focus` selector. `scroll` needs `dy` and takes `ms`. `click`/`hover` need `selector` and take `minY` (minimum Y for the visible instance pick), `dwell`, `after`, `waitLoad`. Every step takes `label` and `narration`.
 
 Two fields carry the whole advantage of this lane, so fill them in:
 

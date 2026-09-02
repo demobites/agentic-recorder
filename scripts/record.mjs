@@ -87,6 +87,16 @@ const DEFAULT_CLICK_AFTER = 2000;
 const CLOSING_BEAT_MS = 2200;
 // LAW (hold your line, founder 2026-09-02): a beat is never shorter than its
 // own narration. Same estimate manifest.mjs uses (words / 2.6 s + 0.4 s).
+// Storyboard durations (`dwell`, `after`, settle `ms`, scroll `ms`) are
+// MILLISECONDS; an author who writes 3.4 means seconds. Anything under 60 is
+// read as seconds (a 59 ms dwell is never intended).
+// The video track starts up to ~2.5 s AFTER the wall clock (startup lead,
+// measured per take by calibrate.mjs). trim.mjs cuts by record_from, so the
+// opening beat loses that lead in the published file. The FIRST narrated beat
+// after the stamp carries this slack so its line always has its full beat.
+const STARTUP_LEAD_SLACK_S = 2.5;
+let openingBeatPending = false;
+const ms = (v, fallback) => (v == null ? fallback : v < 60 ? Math.round(v * 1000) : v);
 const estimateSpeech = (text) => String(text).trim().split(/\s+/).filter(Boolean).length / 2.6 + 0.4;
 
 const narrationOf = (s) => {
@@ -603,13 +613,14 @@ try {
         }
         await page.waitForTimeout(600);
         manifest.record_from = t();
+        openingBeatPending = true;
       }
       await page.evaluate(([a, b]) => window.__recSetCursor?.(a, b), [cx, cy]);
     } else if (step.action === "settle") {
       // A settle can still carry the camera: `focus` names what to look at.
-      const ms = step.ms ?? DEFAULT_SETTLE_MS;
+      const settleMs = ms(step.ms, DEFAULT_SETTLE_MS);
       const shotStart = t();
-      await page.waitForTimeout(ms);
+      await page.waitForTimeout(settleMs);
       if (step.focus) {
         const box = await visibleBox(step.focus, step.minY ?? 0, 4000);
         pushShot(box, shotStart, t(), step.label, { n: rec.n });
@@ -617,7 +628,7 @@ try {
     } else if (step.action === "scroll") {
       // scrollTo distances are ALSO zoomed-space under CSS zoom (measured:
       // scrollTo(0,600) moves 300 design px) — storyboards speak design px.
-      await smoothScroll(step.dy * SUPERSAMPLE, step.ms ?? 1400, step.within ?? null);
+      await smoothScroll(step.dy * SUPERSAMPLE, ms(step.ms, 1400), step.within ?? null);
     } else if (step.action === "click" || step.action === "hover") {
       const { box, el } = await visibleTarget(step.selector, step.minY ?? 0);
       if (!box) throw new Error("no visible target for " + step.selector);
@@ -665,7 +676,7 @@ try {
       };
 
       if (step.action === "hover") {
-        await page.waitForTimeout(step.dwell ?? DEFAULT_HOVER_DWELL);
+        await page.waitForTimeout(ms(step.dwell, DEFAULT_HOVER_DWELL));
         // LAW (camera choreography, measured off the reference 2026-08-09):
         // the camera must NOT travel in lockstep with the cursor. When it
         // does, the cursor sits pinned near frame center while the page
@@ -675,7 +686,7 @@ try {
         // while the cursor sweeps across it, then the camera reframes.
         pushShot(step.focus ? await visibleBox(step.focus, 0, 3000) : box, Math.max(shotStart, arrivalT - 0.3), t(), step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
       } else {
-        await page.waitForTimeout(step.dwell ?? DEFAULT_CLICK_DWELL);
+        await page.waitForTimeout(ms(step.dwell, DEFAULT_CLICK_DWELL));
         await page.evaluate(([a, b]) => window.__recPulse?.(a, b), [x, y]);
         await page.waitForTimeout(220);
         rec.click_at = t();
@@ -699,7 +710,7 @@ try {
         // pointer. The recorder does not guess: it ASKS the page whether the
         // element it just clicked is still connected, visible, and under the
         // point. The verdict rides the click event as press:'full'|'down'.
-        const afterMs = step.after ?? DEFAULT_CLICK_AFTER;
+        const afterMs = ms(step.after, DEFAULT_CLICK_AFTER);
         const early = Math.min(450, afterMs);
         await page.waitForTimeout(Math.min(200, early));
         // TIMING LAW (parity forensics 2026-08-09): this check must not eat
@@ -796,7 +807,7 @@ try {
           w: Math.round(box.width / SUPERSAMPLE), h: Math.round(box.height / SUPERSAMPLE),
         },
       };
-      await page.waitForTimeout(step.dwell ?? DEFAULT_CLICK_DWELL);
+      await page.waitForTimeout(ms(step.dwell, DEFAULT_CLICK_DWELL));
       await page.evaluate(([a, b]) => window.__recPulse?.(a, b), [x, y]);
       await page.waitForTimeout(220);
       rec.click_at = t();
@@ -823,7 +834,7 @@ try {
       pushShot(box, Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label ?? "type", { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
       currentCursor = await cursorUnderPoint();
       pushMouse("move", cx, cy);
-      await page.waitForTimeout(step.after ?? DEFAULT_CLICK_AFTER);
+      await page.waitForTimeout(ms(step.after, DEFAULT_CLICK_AFTER));
     }
     if (rec.narration && step.action !== "goto" && step.action !== "expect") {
       // Hold the shot until the line would have finished, plus a breath — the
@@ -831,7 +842,9 @@ try {
       // beat (founder 2026-09-02: the last track ran past the end).
       // Measured from ARRIVAL (where manifest.mjs anchors the line), not from
       // the cursor's departure — the glide is not speaking time.
-      const need = estimateSpeech(rec.narration) + 0.5;
+      const narrText = typeof rec.narration === "string" ? rec.narration : rec.narration?.text ?? "";
+      let need = estimateSpeech(narrText) + 0.5;
+      if (openingBeatPending) { need += STARTUP_LEAD_SLACK_S; openingBeatPending = false; }
       const elapsed = t() - (rec.arrival ?? rec.t_start);
       if (elapsed < need) await page.waitForTimeout(Math.round((need - elapsed) * 1000));
     }
