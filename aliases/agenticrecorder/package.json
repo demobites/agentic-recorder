@@ -1,0 +1,14 @@
+{
+  "name": "agenticrecorder",
+  "version": "1.0.9",
+  "description": "The Agentic Recorder by DemoBites (no-hyphen spelling). Same command as npx demobite.",
+  "type": "module",
+  "bin": { "agenticrecorder": "index.mjs" },
+  "files": ["index.mjs", "README.md", "LICENSE"],
+  "dependencies": { "demobite": "^1.0.9" },
+  "engines": { "node": ">=18" },
+  "keywords": ["demobites", "agentic recorder", "demo video", "playwright", "claude code", "cursor", "codex", "mcp"],
+  "repository": { "type": "git", "url": "git+https://github.com/demobites/agentic-recorder.git", "directory": "aliases/agenticrecorder" },
+  "homepage": "https://github.com/demobites/agentic-recorder#readme",
+  "license": "MIT"
+}

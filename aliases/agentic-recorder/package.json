@@ -1,0 +1,14 @@
+{
+  "name": "agentic-recorder",
+  "version": "1.0.9",
+  "description": "The Agentic Recorder by DemoBites. Same command as npx demobite: your agent films a real browser from a storyboard and DemoBites turns the take into an editable demo bite.",
+  "type": "module",
+  "bin": { "agentic-recorder": "index.mjs" },
+  "files": ["index.mjs", "README.md", "LICENSE"],
+  "dependencies": { "demobite": "^1.0.9" },
+  "engines": { "node": ">=18" },
+  "keywords": ["demobites", "agentic recorder", "demo video", "playwright", "claude code", "cursor", "codex", "mcp"],
+  "repository": { "type": "git", "url": "git+https://github.com/demobites/agentic-recorder.git", "directory": "aliases/agentic-recorder" },
+  "homepage": "https://github.com/demobites/agentic-recorder#readme",
+  "license": "MIT"
+}
