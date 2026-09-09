@@ -1,119 +1,158 @@
-# demobite
+# DemoBites Agentic Recorder
 
-**You prompt, it records.** The agentic recorder films a real browser from a
-storyboard — real cursor physics, a measured clock, cinematic camera moves —
-and delivers the take into [DemoBites](https://demobites.com), where it becomes
-a fully editable demo: AI narration, zooms, cursor rendering, intro and outro,
-localization, all tweakable in the studio.
+**Ask your coding agent to record your product. Edit the result. Download the MP4.**
+
+Your agent drives a real browser on your machine and records the flow you describe. Connect a free DemoBites account to turn the take into an editable video, with text-to-speech, zooms, captions, and MP4 export included.
+
+**Sign in to your app locally. You do not hand DemoBites your app password or upload your recording browser profile.**
 
 ```bash
-npx demobite
+npx demobite@latest
 ```
 
-That one command checks your setup, installs the recorder skill for
-your coding agent — [Claude Code](https://claude.com/claude-code), Cursor,
-or Codex — and wires the DemoBites
-management MCP so your agent can also run your Update Center and Demo Center.
-Sign-in happens through your own browser — no passwords in the terminal, ever.
-Then you just ask your agent:
+**Free Studio · Text-to-speech included · Unlimited exports · No watermark · No credit card**
 
-> "Record a demo of how search works on our app, and upload it to DemoBites."
+[Website](https://agentic-recorder.com/) · [npm](https://www.npmjs.com/package/demobite) · [Report an issue](https://github.com/demobites/agentic-recorder/issues)
 
-> "Create a release with my latest bites and add Spanish."
+## See the workflow
 
-Commands: `npx demobite` (full setup) · `npx demobite login` · `npx demobite mcp`
-(register the management MCP with your agent) · `npx demobite logout`.
-Anything public — publishing a release, taking a language offline — always
-shows you a preview to approve first. Managing by agent requires the Grow plan;
-recording works on every plan.
+[![Watch the Agentic Recorder walkthrough: terminal, review, Studio editing, and MP4 download](https://assets.demobites.com/agentic-recorder/agenticRecorder-poster.jpg)](https://assets.demobites.com/agentic-recorder/agenticRecorder.mp4)
 
-The agent storyboards the flow, films it in a real Chrome, and stages the take
-for your approval inside DemoBites. You approve in the product; the platform
-does the rest.
+[Watch the walkthrough](https://assets.demobites.com/agentic-recorder/agenticRecorder.mp4). An illustrated walkthrough of the flow, with waiting time compressed.
 
-## Manage DemoBites from your agent (MCP)
+## Start with your own agent
 
-Recording is half the story. The same package wires the **DemoBites management
-MCP** — a control plane your agent uses to run your Update Center and Demo
-Center. Your customers' agents read your centers; your agent runs them.
+You need a coding agent that can read skill instructions, run terminal commands, and control a local browser. A browser-only chat session cannot run this local workflow.
+
+Before installing:
+
+- **Node.js 18 or newer** and npm.
+- **Google Chrome**, recommended. The recorder also supports Playwright's Chromium.
+- **ffmpeg** on your PATH. On macOS: `brew install ffmpeg`.
+- A **free DemoBites account** for the Studio workflow below.
+
+Run these commands from your project directory:
+
+```bash
+# Install the skill and check your setup.
+npx demobite@latest
+
+# Connect this project to your DemoBites workspace.
+npx demobite login
+```
+
+The installer installs Playwright if needed. It checks for Chrome and ffmpeg; it does not install ffmpeg for you.
+
+To connect, open the link printed in your terminal and approve the connection in your browser. If you are signed out of DemoBites, sign in there first. You do not paste a password into the terminal.
+
+Then ask your agent:
+
+> Record a demo of inviting a teammate in my app at http://localhost:3000. Open Team settings, invite alex@example.com as an Admin, and show the confirmation. Show me the storyboard before recording.
+
+Use your own app URL and a demo account. The agent performs real actions in your app, including sending an invitation if that is part of the approved flow.
+
+### Which agent?
+
+The installer currently places the skill at `~/.claude/skills/agentic-recorder/`, the Claude Code skill directory.
+
+For Cursor or Codex, make the [recorder instructions](skill/SKILL.md) available to your agent and ensure it can run the installed scripts. The launcher currently does not install into separate Cursor or Codex skill directories. Connecting an MCP client alone does not install the recorder skill.
+
+## From prompt to finished video
+
+1. **Describe the flow.** Give your agent the app URL and what you want to demonstrate.
+2. **Approve the storyboard.** Review the steps and estimated length before filming. If your app needs a login, sign in yourself in the recorder's local browser window.
+3. **Let it record.** The agent checks the flow and films it. Recording normally runs in the background.
+4. **Review the raw take.** Open the review link printed in the terminal. Check the footage, then approve it to create a Bite, an editable video project.
+5. **Tweak and download.** In the Studio, change a sentence, generate its voice, adjust the zooms or timing, and export your MP4.
+
+The storyboard's narration is a starting point. DemoBites rewrites and fits it to the footage; you can edit the final wording in the Studio.
+
+## What connecting to DemoBites adds
+
+The recorder supplies footage, action timings, cursor movements, and camera targets. The Studio uses that information to create a video you can keep editing.
+
+| Included in the free Studio | What you can do |
+| --- | --- |
+| Script and text-to-speech | Edit the words and generate narration without recording your own voice. |
+| Camera and cursor editing | Adjust automatic zooms, cursor appearance, and timing. |
+| Video finishing | Trim the take, edit captions, and add your background, branding, intro, and outro. |
+| MP4 export | Download Full HD video with narration and no DemoBites watermark. |
+
+**The free Studio holds up to 8 Bites at a time, with unlimited exports. Invite three people who sign up and the Studio becomes unlimited, still free.** It has no trial clock and requires no credit card. You bring your own coding agent; its subscription or model usage is separate. An ElevenLabs key is optional, not required for the Studio's included text-to-speech.
+
+You can use the exported video in your docs, website, release notes, or wherever you need it. Paid publishing and management features are optional. See [current plan details](https://www.demobites.com/pricing).
+
+## One prompt, one result
+
+> Record a demo of Funnels: where customers drop off, which channels work. Show the sidebar and graphs.
+
+[![Watch the finished Funnels demo](https://assets.demobites.com/agentic-recorder/sampleOutput-poster.jpg)](https://assets.demobites.com/agentic-recorder/sampleOutput.mp4)
+
+[Watch the output](https://assets.demobites.com/agentic-recorder/sampleOutput.mp4). Recorded by the agent, then edited and narrated in the free Studio. This prompt assumes the agent already knows the app URL and can access the Funnels page.
+
+## Your app login stays local
+
+**You do not need to hand DemoBites your app password to record a signed-in flow.** Sign in yourself in the recorder's browser on your machine.
+
+The recorder uses a separate, persistent Chrome profile at `.recorder/profile/`. Your app session is saved there for later takes. It does not automatically inherit the sessions in your everyday Chrome profile.
+
+| Data | Where it goes |
+| --- | --- |
+| Your app's browser session | Stays in the local recording profile; the standard local workflow does not upload that profile to DemoBites. |
+| DemoBites recorder key | Saved in `.recorder/config.json` and used to authenticate recorder requests to DemoBites. This is separate from your app login. |
+| Footage and recording metadata | Uploaded to DemoBites for review and processing, including the storyboard, narration intent, cursor events, and camera targets. |
+
+Recording happens locally. Studio processing and editing use DemoBites online. Anything visible or typed into the recorded flow can appear in the footage or recording metadata, so use suitable demo data. Your coding agent's own data handling still follows its provider and your settings.
+
+Keep `.recorder/` and take directories out of version control. To disconnect the recorder, run `npx demobite logout`.
+
+## Local output without a DemoBites account
+
+The repository also contains a [standalone recorder skill](recorder/SKILL.md) and local finishing scripts. These produce a local MP4; optional voiceover uses your own ElevenLabs key.
+
+This is an advanced, manual workflow. The default `npx demobite@latest` command installs the Studio-connected skill, not the standalone skill. The standalone finishing reference contains legacy instructions; use the standalone skill as the entry point rather than treating it as a second ending of the installed Studio skill.
+
+## A few boundaries
+
+- The agentic recorder films **browser workflows**. It does not record native desktop apps or phone screens.
+- The Studio-connected skill is designed for short demos, usually **30–45 seconds**, with a **90-second maximum per Bite**. Split longer stories into separate videos.
+- Some sites block automated browsers. The workflow may need a human sign-in or verification step, and some sites may refuse recording.
+- Filming does not publish anything. You review the take before creating the Bite; public publishing is a separate action.
+
+## Optional: Retake and management
+
+When your UI changes, **Retake** can refilm an existing Bite from its saved recipe. It is a paid capability; see [plan details](https://www.demobites.com/pricing).
+
+```bash
+npx demobite retake <biteId> --note "Export moved to the header"
+```
+
+The package also includes a DemoBites management MCP for releases and centers:
 
 ```bash
 npx demobite mcp
 ```
 
-Claude Code is registered automatically. Any other MCP client works over
-Streamable HTTP: point it at `https://app.demobites.com/api/mcp` with the
-`Authorization: Bearer <key>` header the command prints (in Cursor, add both
-under Settings → MCP). Then talk to your agent like a teammate:
+The default installer also attempts to register that MCP with Claude Code when the current project is already connected. Management access depends on your account and key permissions. You do not need paid management to record, edit, or export a free Bite.
 
-> "Create a release with my latest bites, add Spanish, and publish it."
+[Management documentation](https://www.demobites.com/docs/bites/manage-from-your-agent)
 
-> "What's on our Demo Center? Swap the checkout bite for the onboarding one."
+## Repository
 
-### What it can do — 19 tools
+| Directory | Purpose |
+| --- | --- |
+| `launcher/` | CLI setup, connection commands, and MCP registration. |
+| `skill/` | Studio-connected recorder instructions, login, upload, and Retake. |
+| `scripts/` | Shared browser recording, trimming, and timing calibration. |
+| `recorder/` | Standalone skill and local video finishing tools. |
+| `aliases/` | `agentic-recorder` and `demobites` aliases for the same launcher. |
 
-| Group | Tools |
-|---|---|
-| Connect | `get_started` · `connect_demobites` · `check_connection` · `get_recording_options` |
-| Read | `get_status` · `list_bites` · `list_releases` · `get_release` · `list_languages` |
-| Draft & edit | `create_release` · `update_release` · `assign_bites_to_release` · `update_center_settings` · `add_language` · `update_demo_center` |
-| Publish — with your approval | `publish_release` · `unpublish_release` · `remove_language` · `publish_demo_center` |
+Run `npx demobite@latest` again to update the installed skill. For publishing instructions, see [RELEASING.md](RELEASING.md).
 
-The server describes itself: any client's `tools/list` returns every tool with
-its full input schema, straight from the running code.
-
-### You stay in charge
-
-Draft work executes directly, exactly like clicking around the product. But
-anything that touches a **public** page is two-phase: the tool returns a
-human-readable preview plus a single-use confirmation token, your agent shows
-you the preview, and only your go-ahead executes it. Tokens expire in ten
-minutes, are bound to the exact action and arguments, and every management
-call lands in an audit log.
-
-### Plans
-
-Connecting and reading are open. Managing requires the **Grow** plan.
-Recording works on every plan.
-
-Full guide: [Manage from your agent](https://www.demobites.com/docs/bites/manage-from-your-agent)
-
-## What's in this repository
-
-| Directory | What it is |
-|---|---|
-| `launcher/` | The `npx demobite` entry — environment checks, skill install, login |
-| `skill/` | The DemoBites recorder skill for coding agents (staging, preview, approval flow) |
-| `recorder/` | The open recorder — same filming engine, no account, ends at a polished `demo.mp4` |
-| `scripts/` | The shared engine: filming, clock calibration, cutting |
-
-## Just want the recorder, no DemoBites?
-
-The `recorder/` directory is a standalone skill: the same real-browser filming,
-hover-anchor clock calibration and camera work, delivering a finished, styled
-`demo.mp4` on your disk — no account, no upload. Point your coding agent at it and
-film. When you want narration, zooms, an editable timeline and hosting, the
-sibling skill in `skill/` is one login away.
-
-## How updates reach you
-
-Run with `@latest` and every invocation resolves the newest published version —
-the skill you install always matches the DemoBites platform it talks to.
-Releases are published from GitHub Actions with npm provenance: every version
-is cryptographically tied to a public commit in this repository.
-
-## Requirements
-
-- Node 18+
-- A coding agent — [Claude Code](https://claude.com/claude-code), Cursor, or Codex; the recorder is agent-driven
-- Google Chrome (recommended; films with the real browser) — otherwise
-  Chromium is downloaded on first take
-- ffmpeg (`brew install ffmpeg` on macOS)
+Found something confusing or have an example to share? [Open an issue](https://github.com/demobites/agentic-recorder/issues). Include your operating system, agent, and recorder version. Remove keys, cookies, and private app data from logs or recordings before attaching them.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+The code in this repository is [MIT licensed](LICENSE). The hosted DemoBites Studio is a separate service; its source is not included here.
 
-## Other spellings
-
-`npx agentic-recorder` and `npx demobites` run this same launcher; they are alias packages that depend on `demobite`. Maintainers: see [RELEASING.md](RELEASING.md) before any major version bump.
+Built and maintained by [DemoBites](https://www.demobites.com/).
