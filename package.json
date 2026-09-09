@@ -1,7 +1,7 @@
 {
   "name": "demobite",
   "version": "1.0.9",
-  "description": "The DemoBites agentic recorder — you prompt, it films a real browser, and DemoBites turns the take into an editable demo bite.",
+  "description": "The DemoBites agentic recorder \u2014 you prompt, it films a real browser, and DemoBites turns the take into an editable demo bite.",
   "bin": {
     "demobite": "launcher/index.mjs"
   },
@@ -34,5 +34,9 @@
     "url": "https://github.com/demobites/agentic-recorder/issues"
   },
   "license": "MIT",
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "check-aliases": "node scripts/check-aliases.mjs",
+    "prepublishOnly": "node scripts/check-aliases.mjs"
+  }
 }
