@@ -104,6 +104,28 @@ if ((man.beacon?.flips?.length ?? 0) >= 3) {
 }
 
 const cutAt = Math.max(0, r0 - beaconDelta);
+
+// TAIL law (vanilla-Linux smoke 2026-09-09): raw.webm keeps receiving frames
+// while the browser context tears down — on a headless shell that was a
+// ~10 s FROZEN tail after the last beat, and the agent had to cut it by hand.
+// The story ends where the recorder's last step ended; keep one breath after
+// it and cut the rest. Clean time = wall - record_from (identity law above),
+// so the story's end in raw time is cutAt + (lastStepEnd - r0). Only applied
+// when the raw file actually runs on past that point.
+const TAIL_BEAT_S = 0.8;
+const lastStepEnd = Math.max(0, ...(man.steps ?? []).map((st) => Number(st.t_end) || 0));
+let tailCut = 0;
+if (lastStepEnd > r0) {
+  const storyEndRaw = cutAt + (lastStepEnd - r0) + TAIL_BEAT_S;
+  let rawDur = 0;
+  try {
+    rawDur = parseFloat(execFileSync(FFPROBE(), ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", raw]).toString().trim()) || 0;
+  } catch { /* webm without a duration header — fall through, no tail cut */ }
+  if (rawDur && rawDur - storyEndRaw > 1.0) {
+    tailCut = Math.round(storyEndRaw * 100) / 100;
+    console.log(`tail: raw runs ${(rawDur - storyEndRaw).toFixed(1)}s past the last beat — cutting at ${tailCut.toFixed(2)}s (last step ended at ${(lastStepEnd - r0).toFixed(2)}s of clean time)`);
+  }
+}
 if (cutAt !== r0 - beaconDelta) console.log("beacon: corrected cut clamped at 0 — head shorter than the anchor error");
 man.timebase = {
   a: 1,
@@ -119,7 +141,7 @@ console.log(`timebase: identity, video = wall - ${r0.toFixed(3)}${beaconMethod ?
 execFileSync(FFMPEG(), [
   "-y", "-loglevel", "error",
   "-i", raw,
-  "-filter_complex", `[0:v]trim=start=${cutAt},setpts=PTS-STARTPTS,fps=30,format=yuv420p[out]`,
+  "-filter_complex", `[0:v]trim=${tailCut ? `start=${cutAt}:end=${tailCut}` : `start=${cutAt}`},setpts=PTS-STARTPTS,fps=30,format=yuv420p[out]`,
   "-map", "[out]",
   "-c:v", "libx264", "-preset", "medium", "-crf", "19",
   "-movflags", "+faststart",
