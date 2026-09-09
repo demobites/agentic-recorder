@@ -16,9 +16,9 @@ npx demobite@latest
 
 ## See the workflow
 
-[![Watch the Agentic Recorder walkthrough: terminal, review, Studio editing, and MP4 download](https://assets.demobites.com/agentic-recorder/agenticRecorder-poster.jpg)](https://assets.demobites.com/agentic-recorder/agenticRecorder.mp4)
+https://github.com/user-attachments/assets/18293b85-82e2-475f-8d94-543f1f9bbc1d
 
-[Watch the walkthrough](https://assets.demobites.com/agentic-recorder/agenticRecorder.mp4). An illustrated walkthrough of the flow, with waiting time compressed.
+An illustrated walkthrough of the flow, with waiting time compressed.
 
 ## Start with your own agent
 
@@ -86,9 +86,13 @@ You can use the exported video in your docs, website, release notes, or wherever
 
 > Record a demo of Funnels: where customers drop off, which channels work. Show the sidebar and graphs.
 
-[![Watch the finished Funnels demo](https://assets.demobites.com/agentic-recorder/sampleOutput-poster.jpg)](https://assets.demobites.com/agentic-recorder/sampleOutput.mp4)
 
-[Watch the output](https://assets.demobites.com/agentic-recorder/sampleOutput.mp4). Recorded by the agent, then edited and narrated in the free Studio. This prompt assumes the agent already knows the app URL and can access the Funnels page.
+
+https://github.com/user-attachments/assets/02eb7d3e-fe74-4c0d-b532-e16bfc3fa614
+
+
+ 
+ Recorded by the agent, then edited and narrated in the free Studio. This prompt assumes the agent already knows the app URL and can access the Funnels page.
 
 ## Your app login stays local
 
