@@ -10,7 +10,10 @@
 #
 # Usage: post.sh <takeDir> [backdrop-hex-no-#]   (default backdrop 0f1420)
 set -euo pipefail
-command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg is required on PATH. Install it (macOS: brew install ffmpeg) and rerun." >&2; exit 1; }
+HERE="$(cd "$(dirname "$0")" && pwd)"
+FFMPEG="$(node "$HERE/../../scripts/media-tools.mjs" 2>/dev/null | awk -F"\t" '$1=="ffmpeg"{print $3}')"
+FFPROBE="$(node "$HERE/../../scripts/media-tools.mjs" 2>/dev/null | awk -F"\t" '$1=="ffprobe"{print $3}')"
+[ -n "$FFMPEG" ] && [ -n "$FFPROBE" ] || { echo "ffmpeg/ffprobe: no working build found. Run npx demobite@latest again, or install them on your system." >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "node is required on PATH." >&2; exit 1; }
 D=${1:?Usage: post.sh <takeDir> [backdrop-hex-no-#]}
 # Backdrop resolution mirrors frame.mjs exactly: CLI arg, then the remembered
@@ -20,7 +23,7 @@ BG=${2:-$(node -p "try{(JSON.parse(require('fs').readFileSync('.recorder/config.
 [ -f "$D/raw.webm" ] || { echo "$D/raw.webm not found. Run record.mjs first." >&2; exit 1; }
 [ -f "$D/shadow.png" ] && [ -f "$D/mask.png" ] || { echo "Overlays missing. Run: node frame.mjs $D" >&2; exit 1; }
 TRIM=$(node -p "JSON.parse(require('fs').readFileSync('$D/manifest.json','utf8')).record_from||0")
-ffmpeg -y -loglevel error -i "$D/raw.webm" -i "$D/shadow.png" -i "$D/mask.png" -filter_complex \
+"$FFMPEG" -y -loglevel error -i "$D/raw.webm" -i "$D/shadow.png" -i "$D/mask.png" -filter_complex \
 "color=c=0x${BG}:s=1920x1080:r=30[bg];[0:v]trim=start=${TRIM},setpts=PTS-STARTPTS,scale=1728:972:flags=lanczos[v];[2:v]format=gray[m];[v][m]alphamerge[va];[bg][1:v]overlay=0:0[b1];[b1][va]overlay=96:54:shortest=1,fps=30,format=yuv420p[out]" \
 -map "[out]" -c:v libx264 -preset medium -crf 19 -movflags +faststart "$D/demo.mp4"
-echo "demo.mp4 duration: $(ffprobe -v error -show_entries format=duration -of csv=p=0 "$D/demo.mp4")s"
+echo "demo.mp4 duration: $("$FFPROBE" -v error -show_entries format=duration -of csv=p=0 "$D/demo.mp4")s"

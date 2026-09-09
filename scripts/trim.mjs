@@ -15,15 +15,8 @@ if (!dir) {
   console.error("Usage: node trim.mjs <takeDir>");
   process.exit(2);
 }
-const requireTool = (tool) => {
-  try { execFileSync(tool, ["-version"], { stdio: "ignore" }); }
-  catch {
-    console.error(`${tool} is required on PATH. Install it (macOS: brew install ffmpeg) and rerun.`);
-    process.exit(1);
-  }
-};
-requireTool("ffmpeg");
-requireTool("ffprobe");
+import { ffmpeg as FFMPEG, ffprobe as FFPROBE, requireMediaTools } from "./media-tools.mjs";
+requireMediaTools();
 
 const raw = path.join(dir, "raw.webm");
 const manPath = path.join(dir, "manifest.json");
@@ -61,7 +54,7 @@ if ((man.beacon?.flips?.length ?? 0) >= 3) {
   // The flashes are the first big whole-frame changes in the head. Search a
   // window generous enough for seconds of anchor error in either direction.
   const searchEnd = Math.min(Math.max(r0, flips[flips.length - 1].wall) + 10, 45);
-  const res = spawnSync("ffmpeg", [
+  const res = spawnSync(FFMPEG(), [
     "-loglevel", "info", "-t", String(searchEnd), "-i", raw,
     "-vf", "select='gt(scene,0.3)',showinfo", "-f", "null", "-",
   ], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
@@ -123,7 +116,7 @@ man.timebase = {
 fs.writeFileSync(manPath, JSON.stringify(man, null, 2));
 console.log(`timebase: identity, video = wall - ${r0.toFixed(3)}${beaconMethod ? ` (cut at raw ${cutAt.toFixed(3)}s)` : ""}`);
 
-execFileSync("ffmpeg", [
+execFileSync(FFMPEG(), [
   "-y", "-loglevel", "error",
   "-i", raw,
   "-filter_complex", `[0:v]trim=start=${cutAt},setpts=PTS-STARTPTS,fps=30,format=yuv420p[out]`,
@@ -133,7 +126,7 @@ execFileSync("ffmpeg", [
   clean,
 ], { stdio: "inherit" });
 
-const dur = execFileSync("ffprobe", [
+const dur = execFileSync(FFPROBE(), [
   "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", clean,
 ]).toString().trim();
 const duration = parseFloat(dur);
