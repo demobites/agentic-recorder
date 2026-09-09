@@ -22,15 +22,8 @@ if (!dir) {
   console.error("Usage: node mux.mjs <takeDir>");
   process.exit(2);
 }
-const requireTool = (tool) => {
-  try { execFileSync(tool, ["-version"], { stdio: "ignore" }); }
-  catch {
-    console.error(`${tool} is required on PATH. Install it (macOS: brew install ffmpeg) and rerun.`);
-    process.exit(1);
-  }
-};
-requireTool("ffmpeg");
-requireTool("ffprobe");
+import { ffmpeg as FFMPEG, ffprobe as FFPROBE, requireMediaTools } from "../../scripts/media-tools.mjs";
+requireMediaTools(["ffmpeg","ffprobe"]);
 
 const demoPath = path.join(dir, "demo.mp4");
 const manPath = path.join(dir, "manifest.json");
@@ -66,7 +59,7 @@ const delays = tts
 const mix = tts.map((_, i) => `[a${i}]`).join("") + `amix=inputs=${tts.length}:normalize=0[aout]`;
 
 const outPath = path.join(dir, "demo-voiced.mp4");
-execFileSync("ffmpeg", [
+execFileSync(FFMPEG(), [
   "-y", "-loglevel", "error",
   "-i", demoPath,
   ...inputArgs,
@@ -75,7 +68,7 @@ execFileSync("ffmpeg", [
   "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
   outPath,
 ], { stdio: "inherit" });
-const dur = execFileSync("ffprobe", [
+const dur = execFileSync(FFPROBE(), [
   "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", outPath,
 ]).toString().trim();
 console.log(`demo-voiced.mp4 ready, ${parseFloat(dur).toFixed(2)}s`);

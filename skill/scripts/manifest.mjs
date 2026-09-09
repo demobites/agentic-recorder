@@ -29,6 +29,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
+import { ffmpeg as FFMPEG, ffprobe as FFPROBE } from "./media-tools.mjs";
 
 const args = process.argv.slice(2);
 const dir = args[0];
@@ -73,7 +74,7 @@ let duration = round2(Math.max(0, A * (man.duration ?? 0) + B));
 const cleanPath = path.join(dir, "clean.mp4");
 if (fs.existsSync(cleanPath)) {
   try {
-    duration = round2(parseFloat(execFileSync("ffprobe", [
+    duration = round2(parseFloat(execFileSync(FFPROBE(), [
       "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", cleanPath,
     ]).toString().trim()));
   } catch {
@@ -215,7 +216,7 @@ if (fs.existsSync(cleanPath)) {
     // count exists because the bbox alone lies: two tiny unrelated changes
     // far apart (caret + spinner) span a huge, nearly-empty bbox (review
     // finding, 2026-08-09).
-    const res = spawnSync("ffmpeg", [
+    const res = spawnSync(FFMPEG(), [
       "-loglevel", "info",
       "-ss", String(Math.max(0, tPre)), "-i", cleanPath,
       "-ss", String(Math.min(duration - 0.05, tPost)), "-i", cleanPath,

@@ -20,14 +20,8 @@ if (!dir) {
   console.error("Usage: node tts.mjs <takeDir>");
   process.exit(2);
 }
-const requireTool = (tool) => {
-  try { execFileSync(tool, ["-version"], { stdio: "ignore" }); }
-  catch {
-    console.error(`${tool} is required on PATH. Install it (macOS: brew install ffmpeg) and rerun.`);
-    process.exit(1);
-  }
-};
-requireTool("ffprobe");
+import { ffmpeg as FFMPEG, ffprobe as FFPROBE, requireMediaTools } from "../../scripts/media-tools.mjs";
+requireMediaTools(["ffprobe"]);
 
 let KEY = process.env.ELEVENLABS_API_KEY || "";
 if (!KEY) {
@@ -68,7 +62,7 @@ for (const step of narrated) {
   const buf = Buffer.from(await res.arrayBuffer());
   const file = `seg${step.n}.mp3`;
   fs.writeFileSync(path.join(outDir, file), buf);
-  const dur = parseFloat(execFileSync("ffprobe", [
+  const dur = parseFloat(execFileSync(FFPROBE(), [
     "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path.join(outDir, file),
   ]).toString());
   out.push({ n: step.n, text: step.narration.text, file, duration: Math.round(dur * 100) / 100 });

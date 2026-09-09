@@ -28,6 +28,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { ffmpeg as FFMPEG, requireMediaTools } from "./media-tools.mjs";
+requireMediaTools(["ffmpeg"]);
 
 const dir = process.argv[2];
 if (!dir) { console.error("Usage: node calibrate.mjs <takeDir>"); process.exit(2); }
@@ -97,7 +99,7 @@ function roiChanges(bb) {
   const pad = 6;
   const x0 = Math.max(0, bb.x - pad), y0 = Math.max(0, bb.y - pad);
   const w = Math.min(FRAME.w - x0, bb.w + 2 * pad), h = Math.min(FRAME.h - y0, bb.h + 2 * pad);
-  const res = spawnSync("ffmpeg", [
+  const res = spawnSync(FFMPEG(), [
     "-loglevel", "info", "-i", clean,
     "-vf", `crop=${w}:${h}:${x0}:${y0},select='gte(scene,0)',metadata=print`, "-f", "null", "-",
   ], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
@@ -218,7 +220,7 @@ if (clicks.length === 0) {
 }
 
 function sceneChanges(threshold) {
-  const res = spawnSync("ffmpeg", [
+  const res = spawnSync(FFMPEG(), [
     "-loglevel", "info", "-i", clean,
     "-vf", `select='gt(scene,${threshold})',showinfo`, "-f", "null", "-",
   ], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });

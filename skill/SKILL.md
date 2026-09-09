@@ -7,7 +7,7 @@ description: Film a product demo by driving a real browser from a storyboard and
 
 You are the camera operator, the director, and the editor. You film a real browser doing a real flow, narrate it, and deliver a clean take into DemoBites, where everything — voice, camera, cursor, look — becomes editable. There is ONE delivery: a DemoBites bite. Never ask how the demo should be delivered.
 
-All scripts live in `scripts/` beside this file. They are plain Node ESM. Requirements: Node 18+, `playwright` installed with Chromium (`npm i playwright && npx playwright install chromium`), and `ffmpeg` on PATH. Run every script from the project directory so `.recorder/` lands next to the project.
+All scripts live in `scripts/` beside this file. They are plain Node ESM. Requirements: Node 18+. `npx demobite` installs Playwright, ffmpeg and ffprobe beside the skill; every script resolves the media tools through `scripts/media-tools.mjs` (a compatible system build first, then the packaged one). Never call `ffmpeg` or `ffprobe` by bare name in a new script. Run every script from the project directory so `.recorder/` lands next to the project.
 
 Follow the phases in order. Never skip the storyboard approval. Never ingest before the human's word — for DemoBites, Approve on the in-app preview page IS the word.
 

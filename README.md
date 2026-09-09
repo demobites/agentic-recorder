@@ -28,7 +28,6 @@ Before installing:
 
 - **Node.js 18 or newer** and npm.
 - **Google Chrome**, recommended. The recorder also supports Playwright's Chromium.
-- **ffmpeg** on your PATH. On macOS: `brew install ffmpeg`.
 - A **free DemoBites account** for the Studio workflow below.
 
 Run these commands from your project directory:
@@ -41,7 +40,7 @@ npx demobite@latest
 npx demobite login
 ```
 
-The installer installs Playwright if needed. It checks for Chrome and ffmpeg; it does not install ffmpeg for you.
+The installer installs Playwright, ffmpeg and ffprobe beside the skill if they are not already there. It uses your own ffmpeg when a compatible build is on your PATH. It checks for Chrome and downloads Chromium on the first take if Chrome is missing.
 
 To connect, open the link printed in your terminal and approve the connection in your browser. If you are signed out of DemoBites, sign in there first. You do not paste a password into the terminal.
 

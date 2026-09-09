@@ -47,8 +47,6 @@ const chromePaths = [
 ];
 if (chromePaths.some((p) => fs.existsSync(p)) || hasBin("google-chrome")) ok("Google Chrome (films with the real browser)");
 else warn("Google Chrome not found — the recorder will download Chromium on first take");
-if (hasBin("ffmpeg")) ok("ffmpeg");
-else warn("ffmpeg not found — install it (macOS: brew install ffmpeg) before recording");
 if (hasBin("claude")) ok("Claude Code (drives the recorder; MCP registers automatically)");
 else warn("Claude Code not found — using Cursor or Codex? They drive the recorder too; MCP setup prints below");
 
@@ -63,12 +61,28 @@ for (const f of fs.readdirSync(path.join(pkgRoot, "skill/scripts"))) copy(`skill
 for (const f of fs.readdirSync(path.join(pkgRoot, "scripts"))) copy(`scripts/${f}`, `scripts/${f}`);
 ok(`Skill installed → ${dest}`);
 
-// Playwright lives with the skill so takes can film.
-if (!fs.existsSync(path.join(dest, "node_modules", "playwright"))) {
-  console.log("\n  Installing Playwright (one-time)…");
-  const r = spawnSync("npm", ["install", "--prefix", dest, "--silent", "playwright"], { stdio: "inherit" });
+// Playwright and the media tools live with the skill so takes can film and
+// finish on any machine. ffmpeg and ffprobe are packaged per platform
+// (@ffmpeg-installer, @ffprobe-installer); a compatible system build is preferred when present
+// (scripts/media-tools.mjs decides). One line installs everything.
+const needed = ["playwright", "@ffmpeg-installer/ffmpeg", "@ffprobe-installer/ffprobe"].filter(
+  (m) => !fs.existsSync(path.join(dest, "node_modules", m)),
+);
+if (needed.length) {
+  console.log(`\n  Installing ${needed.join(", ")} (one-time)…`);
+  const r = spawnSync("npm", ["install", "--prefix", dest, "--silent", "--no-audit", "--no-fund", ...needed], { stdio: "inherit" });
   if (r.status === 0) ok("Playwright ready");
-  else warn("Playwright install failed — run: npm install --prefix ~/.claude/skills/agentic-recorder playwright");
+  else warn(`Install failed — run: npm install --prefix ~/.claude/skills/agentic-recorder ${needed.join(" ")}`);
+}
+{
+  // Verify both tools actually run (compatibility, not presence).
+  const r = spawnSync("node", [path.join(dest, "scripts", "media-tools.mjs")], { encoding: "utf8" });
+  const rows = (r.stdout || "").trim().split("\n").filter(Boolean).map((l) => l.split("\t"));
+  for (const [tool, source, info] of rows) {
+    if (source === "missing") warn(`${tool}: no working build (${info})`);
+    else ok(`${tool} ready (${source === "packaged" ? "packaged with the recorder" : source === "system" ? "your system build" : "from .recorder/config.json"})`);
+  }
+  if (r.status !== 0) warn("Recording will fail until ffmpeg and ffprobe both work. Re-run this command, or install them on your system.");
 }
 
 // ── 3. Subcommands ─────────────────────────────────────────────────────────
