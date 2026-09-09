@@ -45,8 +45,9 @@ const chromePaths = [
   "C:/Program Files/Google/Chrome/Application/chrome.exe",
   "/usr/bin/google-chrome",
 ];
-if (chromePaths.some((p) => fs.existsSync(p)) || hasBin("google-chrome")) ok("Google Chrome (films with the real browser)");
-else warn("Google Chrome not found — the recorder will download Chromium on first take");
+const haveChrome = chromePaths.some((p) => fs.existsSync(p)) || hasBin("google-chrome") || hasBin("google-chrome-stable");
+if (haveChrome) ok("Google Chrome (films with the real browser)");
+else console.log("  · Google Chrome not found — installing Playwright's Chromium for the recorder");
 if (hasBin("claude")) ok("Claude Code (drives the recorder; MCP registers automatically)");
 else warn("Claude Code not found — using Cursor or Codex? They drive the recorder too; MCP setup prints below");
 
@@ -73,6 +74,19 @@ if (needed.length) {
   const r = spawnSync("npm", ["install", "--prefix", dest, "--silent", "--no-audit", "--no-fund", ...needed], { stdio: "inherit" });
   if (r.status === 0) ok("Playwright ready");
   else warn(`Install failed — run: npm install --prefix ~/.claude/skills/agentic-recorder ${needed.join(" ")}`);
+}
+// No Chrome on this machine: fetch Playwright's Chromium once so the first
+// take has a browser. Linux needs the shared libraries too (--with-deps).
+if (!haveChrome) {
+  const pw = path.join(dest, "node_modules", "playwright", "cli.js");
+  const marker = path.join(dest, ".chromium-ready");
+  if (!fs.existsSync(marker) && fs.existsSync(pw)) {
+    console.log("  Installing Chromium (one-time)…");
+    const args = [pw, "install", "chromium", ...(process.platform === "linux" ? ["--with-deps"] : [])];
+    const r = spawnSync("node", args, { stdio: "inherit", cwd: dest });
+    if (r.status === 0) { fs.writeFileSync(marker, new Date().toISOString()); ok("Chromium ready"); }
+    else warn(`Chromium install failed — run: node ${pw} install chromium${process.platform === "linux" ? " --with-deps" : ""}`);
+  } else if (fs.existsSync(marker)) ok("Chromium ready");
 }
 {
   // Verify both tools actually run (compatibility, not presence).
