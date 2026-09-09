@@ -113,3 +113,7 @@ is cryptographically tied to a public commit in this repository.
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+## Other spellings
+
+`npx agentic-recorder` and `npx demobites` run this same launcher; they are alias packages that depend on `demobite`. Maintainers: see [RELEASING.md](RELEASING.md) before any major version bump.
