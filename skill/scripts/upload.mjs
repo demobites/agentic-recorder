@@ -40,6 +40,28 @@ if (retakeIdx >= 0 && !(Number.isInteger(retakeOfBiteId) && retakeOfBiteId > 0))
 // history show why this version was filmed. Never a secret, never required.
 const noteIdx = process.argv.indexOf("--note");
 const retakeNote = noteIdx >= 0 ? String(process.argv[noteIdx + 1] ?? "").trim().slice(0, 600) : "";
+// BATCH OF BRIEFS (2026-09-13): a take claimed from a brief carries its attempt
+// (briefId, revision, contentHash, attemptRef) so provenance rides into the
+// staged take and the bite. Read from <takeDir>/brief.json (written by
+// briefs.mjs claim) unless --attempt <file> points elsewhere or --no-attempt
+// opts out. `--stage-only` returns right after the two uploads (the batch
+// waits with status.mjs); `--supersede` replaces a stage already pinned to
+// this attempt (the server refuses a second one otherwise).
+const stageOnly = process.argv.includes("--stage-only");
+const supersede = process.argv.includes("--supersede");
+const attemptIdx = process.argv.indexOf("--attempt");
+const attemptPath = process.argv.includes("--no-attempt")
+  ? null
+  : attemptIdx >= 0 ? String(process.argv[attemptIdx + 1] ?? "") : path.join(dir, "brief.json");
+let attempt = null;
+if (attemptPath && fs.existsSync(attemptPath)) {
+  try {
+    const b = JSON.parse(fs.readFileSync(attemptPath, "utf8"));
+    if (b.briefId && b.revision !== undefined && b.contentHash && b.attemptRef) {
+      attempt = { briefId: String(b.briefId), revision: b.revision, contentHash: String(b.contentHash), attemptRef: String(b.attemptRef) };
+    } else console.error(`${attemptPath} is missing briefId/revision/contentHash/attemptRef; staging without an attempt`);
+  } catch (e) { console.error(`${attemptPath} unreadable (${e.message}); staging without an attempt`); }
+} else if (attemptIdx >= 0) { console.error(`--attempt ${attemptPath} not found`); process.exit(2); }
 const cfgPath = path.resolve(".recorder", "config.json");
 let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8")); } catch {}
@@ -144,13 +166,23 @@ if (retakeOfBiteId) console.log(`Staging as a RE-TAKE of bite ${retakeOfBiteId} 
 
 // ── stage ──────────────────────────────────────────────────────────────────
 const authHeaders = { Authorization: `Bearer ${cfg.api_key}`, "Content-Type": "application/json" };
+if (attempt) {
+  // The attempt moves to "uploading" before the stage call; a 409 here means
+  // the server already sees it at or past that state, which is fine.
+  try {
+    const ev = await fetch(`${base}/api/recorder/briefs/attempts/${encodeURIComponent(attempt.attemptRef)}`, {
+      method: "PUT", headers: authHeaders, body: JSON.stringify({ event: "uploading" }),
+    });
+    if (!ev.ok && ev.status !== 409) console.error(`attempt event "uploading" → ${ev.status} (continuing)`);
+  } catch (e) { console.error(`attempt event "uploading" failed: ${e.message} (continuing)`); }
+}
 const previewSizeBytes = fs.statSync(cleanPath).size;
 let stageRes;
 try {
   stageRes = await fetch(`${base}/api/recorder/stage`, {
     method: "PUT",
     headers: authHeaders,
-    body: JSON.stringify({ filename: "take.zip", sizeBytes, previewSizeBytes, manifest, ...(recipe ? { recipe } : {}), ...(retakeOfBiteId ? { retakeOfBiteId } : {}) }),
+    body: JSON.stringify({ filename: "take.zip", sizeBytes, previewSizeBytes, manifest, ...(recipe ? { recipe } : {}), ...(retakeOfBiteId ? { retakeOfBiteId } : {}), ...(attempt ? { attempt } : {}), ...(attempt && supersede ? { supersede: true } : {}) }),
   });
 } catch (e) {
   console.error(`Could not reach ${base}: ${e.message}`);
@@ -166,6 +198,14 @@ if (!stageRes.ok) {
     // Should not happen anymore — staging is quota-free by design. Neutral
     // fallback if an older server answers this way.
     console.error(`DemoBites declined the stage. Check ${base}/bites and try again.`);
+    process.exit(1);
+  }
+  if (errBody?.error === "invalid_attempt") {
+    console.error(`DemoBites refused the attempt on this take: ${errBody.message ?? "invalid_attempt"}. Re-claim the brief (node scripts/briefs.mjs claim …) and stage again.`);
+    process.exit(1);
+  }
+  if (errBody?.error === "attempt_already_staged") {
+    console.error(`This attempt already has a staged take${errBody.stagingId ? ` (${errBody.stagingId})` : ""}. Review that one, or stage again with --supersede to replace it.`);
     process.exit(1);
   }
   console.error(`Stage failed: ${stageRes.status} ${errBody ? JSON.stringify(errBody) : ""}`);
@@ -191,6 +231,14 @@ async function putS3(url, contentType, filePath, label) {
 }
 await putS3(uploadUrl, "application/zip", zipPath, "ZIP");
 await putS3(previewUploadUrl, "video/mp4", cleanPath, "Preview");
+// The staging id used to be printed only; a batch resumes from disk, so it is
+// persisted next to the take (status.mjs reads it).
+try {
+  fs.writeFileSync(path.join(dir, "staged.json"), JSON.stringify({
+    stagingId, previewUrl: new URL(previewUrl, base).toString(), queueUrl: queueUrl ? new URL(queueUrl, base).toString() : null,
+    pendingCount: pendingCount ?? null, attemptRef: attempt?.attemptRef ?? null, briefId: attempt?.briefId ?? null, at: new Date().toISOString(),
+  }, null, 2) + "\n");
+} catch (e) { console.error(`staged.json not written: ${e.message}`); }
 
 // ── open the in-app preview — the review happens THERE ─────────────────────
 // Batch etiquette (founder, 2026-08-11): when takes are stacked for a later
@@ -211,83 +259,15 @@ if (!noOpen) {
   } catch { /* printing the URL above is the fallback */ }
 }
 
-// ── poll while the human decides, then until the bite is READY ─────────────
-// LAW (founder 2026-08-08): never hand a human a studio link before the bite
-// is finished. Approve only STARTS the pipeline.
-const POLL_MS = 4000;
-const DECISION_TIMEOUT_MS = 30 * 60 * 1000;
-const deadline = Date.now() + DECISION_TIMEOUT_MS;
-let announced = false;
-let completed = false;
-let approvedBiteId = null;
-let finalStudioUrl = null;
-process.stdout.write("Waiting for your word in the browser");
-while (Date.now() < deadline) {
-  await new Promise((r) => setTimeout(r, POLL_MS));
-  let res;
-  try {
-    res = await fetch(`${base}/api/recorder/stage?id=${stagingId}`, {
-      headers: { Authorization: `Bearer ${cfg.api_key}` },
-    });
-  } catch { process.stdout.write("."); continue; }
-  if (!res.ok) { process.stdout.write("."); continue; }
-  const st = await res.json().catch(() => null);
-  if (!st) { process.stdout.write("."); continue; }
-  if (st.status === "rejected") {
-    process.stdout.write("\n");
-    console.error("Discarded in the app. Adjust the storyboard and film again.");
-    process.exit(1);
-  }
-  if (st.status === "approved") {
-    if (!announced) {
-      process.stdout.write("\n");
-      console.log(`Approved — bite ${st.biteId} is being created`);
-      announced = true;
-      approvedBiteId = st.biteId;
-      finalStudioUrl = st.studioUrl ? new URL(st.studioUrl, base).toString() : null;
-      process.stdout.write("Waiting for the bite to finish");
-    }
-    if (st.biteStatus === "completed") {
-      completed = true;
-      process.stdout.write("\n");
-      break;
-    }
-    if (st.biteStatus === "failed") {
-      process.stdout.write("\n");
-      console.error("The pipeline FAILED for this bite. Do not hand over any link — investigate.");
-      process.exit(1);
-    }
-  }
-  process.stdout.write(".");
-}
-if (!announced) {
-  process.stdout.write("\n");
-  console.error(`No decision yet. The preview stays available at:\n  ${pageUrl}`);
-  process.exit(1);
-}
-// LAW: the studio link exists ONLY behind a confirmed 'completed'. A deadline
-// expiry after approval is NOT completion (review finding: the fallthrough
-// here once printed the link for an unfinished bite).
-if (!completed) {
-  console.error("Approved, but the bite did not finish within the wait window. Do not share the link yet — poll /api/recorder/status or reload the preview page.");
-  process.exit(1);
+if (stageOnly) {
+  console.log(`Staged only. Wait for the decision later with: node scripts/status.mjs ${dir}`);
+  process.exit(0);
 }
 
-// ── final receipt via the status endpoint (same gate as before) ────────────
-let last = null;
-try {
-  const res = await fetch(`${base}/api/recorder/status?biteId=${approvedBiteId}`, {
-    headers: { Authorization: `Bearer ${cfg.api_key}` },
-  });
-  if (res.ok) last = await res.json().catch(() => null);
-} catch { /* summary is best-effort; readiness was confirmed above */ }
-if (last && last.status === "completed") {
-  console.log(
-    `Ready: "${last.title}" — ${last.durationSec ? last.durationSec.toFixed(1) + "s, " : ""}` +
-    `${last.narrationReady}/${last.narrationTotal} narration segments with audio, ${last.zooms} camera shots`,
-  );
-  if (last.narrationTotal === 0) console.error("WARNING: no narration segments landed. The voice will be silent.");
-  else if (last.narrationReady < last.narrationTotal) console.error(`WARNING: ${last.narrationTotal - last.narrationReady} segment(s) have no audio behind them.`);
-  if (last.zooms === 0) console.error("WARNING: no camera shots landed.");
-}
-if (finalStudioUrl) console.log(`Studio: ${finalStudioUrl}`);
+// ── poll while the human decides, then until the bite is READY ─────────────
+// Shared with status.mjs (a batch waits there). The law it enforces: never
+// hand a human a studio link before the bite is finished; Approve only
+// STARTS the pipeline.
+const { waitForDecision } = await import("./stage-wait.mjs");
+const outcome = await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl });
+process.exit(outcome.exitCode);

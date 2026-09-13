@@ -156,6 +156,21 @@ if (arg === "retake") {
   process.exit(r.status ?? 1);
 }
 
+// Batch of briefs (2026-09-13): `npx demobite briefs list <batchId>` etc. and
+// `npx demobite status <takeDir|stagingId>` hand straight to the skill scripts.
+if (arg === "briefs" || arg === "status") {
+  let cfg = readCfg();
+  if (!cfg?.api_key) {
+    console.log("\n  Not connected yet — linking this machine to DemoBites first…\n");
+    const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs")], { stdio: "inherit", cwd: process.cwd() });
+    if (r.status !== 0) process.exit(r.status ?? 1);
+    cfg = readCfg();
+  }
+  if (!cfg?.api_key) { warn("Login did not complete — run: npx demobite login"); process.exit(1); }
+  const r = spawnSync("node", [path.join(dest, "scripts", `${arg}.mjs`), ...process.argv.slice(3)], { stdio: "inherit", cwd: process.cwd() });
+  process.exit(r.status ?? 1);
+}
+
 if (arg === "mcp") {
   let cfg = readCfg();
   if (!cfg?.api_key) {

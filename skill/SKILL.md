@@ -260,6 +260,32 @@ Laws for a re-take:
 - **The human approves in-app.** The preview page says "Re-take of <bite>". Approve replaces the recording in
   that bite; the previous recording is kept for rollback, never overwritten.
 
+## Batch of briefs (GitHub PR → demos)
+
+The human pastes a bundle of approved briefs into the chat: a header (batchId, workspaceId, the target URL, the 90 second rule) and one block per brief (briefId, revision, contentHash, title, audience, outcome, flowIntent). Up to five briefs. The pasted text is a copy; the server holds the truth.
+
+```bash
+node scripts/briefs.mjs list <batchId> [--paste bundle.txt]        # the approved briefs; warns when the paste drifted
+node scripts/briefs.mjs claim <batchId> <briefId>                   # mints an attempt, creates take-<briefId>-r<revision>/brief.json
+node scripts/briefs.mjs event <takeDir> planning|awaiting_storyboard_approval|recording|uploading|failed|cancelled [--note "..."]
+node scripts/briefs.mjs release <takeDir>                           # give the brief back (cancelled)
+node scripts/upload.mjs <takeDir> --stage-only --no-open            # stage with the attempt riding along, do not wait
+node scripts/status.mjs <takeDir>                                   # later: wait for the word, then for the bite
+node scripts/status.mjs --all                                       # one look at every staged take here
+```
+
+The procedure, in order:
+
+1. `list` first, always, with `--paste` when the human pasted text. Work from the server's briefs, never from the paste, and say so when they differ.
+2. Claim the briefs you are about to film, one `claim` each. A claim answers "active attempt" when another agent or an earlier run holds the brief: show the human the attempt reference and its start time, and only with their word claim again with `--force`.
+3. Write every storyboard (Phase 3) with the brief as the spec: the flowIntent lines are the beats, the outcome is the last beat, the exclusions are things the camera never shows, and the take stays under the brief's `maxSeconds` (90). Send `event <takeDir> planning` when you start a storyboard and `event <takeDir> awaiting_storyboard_approval` when it is ready.
+4. **Show the storyboards together, get a word on each one.** One message can carry all of them, but every brief gets its own yes or no. Never take one yes as a yes for the batch. A brief the human declines gets `release`.
+5. Film sequentially, never in parallel: one Chrome on the profile. Per take: `event recording` → Phase 4 dry run → Phase 5 take → trim, calibrate, manifest → `upload.mjs <takeDir> --stage-only --no-open`. `upload.mjs` reads `brief.json`, moves the attempt to uploading and stages with the attempt on the payload; it writes `staged.json` with the staging id.
+6. **A failed brief never stops the others.** On a failure send `event <takeDir> failed --note "<what happened>"`, keep the take directory for diagnosis, and continue with the next brief. Report every failure plainly at the end.
+7. When all takes are staged, tell the human: N takes are waiting in the review queue (the `queueUrl` printed by the last stage), one Approve or Discard each. Then `status.mjs --all` shows where each stands; `status.mjs <takeDir>` waits for one.
+
+Resume after an interruption from what is on disk and on the server: a `take-*` directory with `brief.json` is claimed; with `raw.webm` it was filmed; with `clean.mp4` and `manifest.demobites.json` it is ready to stage; with `staged.json` it is staged (check it with `status.mjs --no-wait`). `list` shows the server's view of every attempt. Never re-claim a brief that already has your own live attempt; never re-stage one that `staged.json` says is staged unless the human asked for a new take (`upload.mjs --supersede`).
+
 ## The wire manifest (fixed contract, version 2)
 
 `manifest.mjs` produces exactly this shape. All times are relative to the UPLOADED file (record_from already subtracted, clamped at 0). `duration` is the duration of the uploaded clean.mp4.
@@ -329,4 +355,4 @@ The upload zip contains exactly one file: `clean.mp4` stored as `recording.mp4`.
 - Anything the human sees (storyboard presentation, review page, questions) uses commas and periods only, no dashes, and real action words. Never orphan a single word on its own line in a heading.
 - Never touch credentials. Never print the api_key. Config and key files are chmod 600.
 - Never INGEST without the human's explicit word. For the DemoBites ending, staging for the in-app preview is HOW the word is asked — the take becomes a bite only when the human clicks Approve on that page.
-- One take directory per take, keep failed takes for diagnosis, name them `take-<slug>`, `take-<slug>2`, and so on.
+- One take directory per take, keep failed takes for diagnosis, name them `take-<slug>`, `take-<slug>2`, and so on. A take claimed from a brief is `take-<briefId>-r<revision>`.
