@@ -87,6 +87,22 @@ try {
     if (retakeNote) recipe.config = { ...(recipe.config ?? {}), retake_note: retakeNote };
   }
 } catch (e) { console.error("recipe skipped:", e.message); }
+// LAW (founder 2026-09-14): a take that created anything returns the workspace
+// to its initial state before it is staged. The storyboard declares cleanup[];
+// cleanup.mjs writes cleanup.json with the checks. No passing cleanup.json,
+// no stage. --allow-uncleaned overrides, and says so out loud.
+try {
+  const sbp = path.join(dir, "storyboard.json");
+  const sb = fs.existsSync(sbp) ? JSON.parse(fs.readFileSync(sbp, "utf8")) : {};
+  if (Array.isArray(sb.cleanup) && sb.cleanup.length > 0) {
+    const cp = path.join(dir, "cleanup.json");
+    const rep = fs.existsSync(cp) ? JSON.parse(fs.readFileSync(cp, "utf8")) : null;
+    if (!rep || rep.ok !== true) {
+      if (process.argv.includes("--allow-uncleaned")) console.error("WARNING: staging a take whose cleanup did not run or did not pass (--allow-uncleaned). The workspace may still carry what the take created.");
+      else { console.error(`This take declares cleanup[] but ${rep ? "cleanup.json says NOT ok" : "cleanup.json is missing"}. Run: node scripts/cleanup.mjs ${dir}  (then stage again)`); process.exit(1); }
+    }
+  }
+} catch (e) { console.error(`cleanup check skipped: ${e.message}`); }
 if (!fs.existsSync(cleanPath)) { console.error(`${cleanPath} not found. Run: node scripts/trim.mjs ${dir}`); process.exit(1); }
 if (!fs.existsSync(wirePath)) { console.error(`${wirePath} not found. Run: node scripts/manifest.mjs ${dir}`); process.exit(1); }
 const manifest = JSON.parse(fs.readFileSync(wirePath, "utf8"));
