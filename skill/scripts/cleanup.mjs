@@ -75,12 +75,15 @@ async function run(step, isCheck) {
       if (!el) throw new Error(`no visible target for ${step.selector}`);
       if (step.action === "hover") await el.hover();
       if (step.action === "click") { await el.click(); await page.waitForTimeout(step.after ?? 1200); }
-      if (step.action === "type") { await el.click(); if (step.clear) { await page.keyboard.press("Meta+A").catch(() => {}); await page.keyboard.press("Control+A").catch(() => {}); await page.keyboard.press("Backspace"); } await page.keyboard.type(String(step.text ?? ""), { delay: 20 }); if (step.enter) await page.keyboard.press("Enter"); await page.waitForTimeout(step.after ?? 500); }
+      if (step.action === "type") { await el.click(); if (step.clear) { await el.fill("").catch(async () => { await page.keyboard.press("ControlOrMeta+A"); await page.keyboard.press("Backspace"); }); } await page.keyboard.type(String(step.text ?? ""), { delay: 20 }); if (step.enter) await page.keyboard.press("Enter"); await page.waitForTimeout(step.after ?? 500); }
     }
     else throw new Error(`unknown action ${step.action}`);
   } catch (e) { rec.ok = false; rec.error = e.message; }
+  rec.url = page.url(); // where the step left the page (a failed prep leaves its draft's url here)
   (isCheck ? report.checks : report.ran).push(rec);
-  if (!rec.ok) report.ok = false;
+  // An optional step (required:false) may fail without failing the report:
+  // the checks decide. Required steps and checks decide the verdict.
+  if (!rec.ok && (isCheck || step.required !== false)) report.ok = false;
   console.log(`${rec.ok ? "✓" : "✗"} ${isCheck ? "check " : ""}${label}${rec.detail ? ` (${rec.detail})` : ""}${rec.error ? ` — ${rec.error}` : ""}`);
   return rec.ok;
 }
@@ -92,6 +95,10 @@ for (const step of steps) { if (!(await run(step, false)) && step.required !== f
 if (checks.length > 0 && page.url() === "about:blank" && sb.url) { await page.goto(sb.url, { waitUntil: "load", timeout: 60000 }).catch(() => {}); await page.waitForTimeout(3500); }
 for (const step of checks) await run(step, true);
 await ctx.close();
+// The verdict: when checks are declared they ARE the proof (a rerun after a
+// partial revert legitimately finds nothing left to do); without checks, every
+// required step must have passed.
+if (checks.length > 0) report.ok = report.checks.every((c) => c.ok);
 fs.writeFileSync(path.join(dir, outName), JSON.stringify(report, null, 2) + "\n");
 console.log(`${outName} written: ${report.ok ? "ok" : "NOT ok"} (${report.ran.length} steps, ${report.checks.length} checks)`);
 process.exit(report.ok ? 0 : 1);
