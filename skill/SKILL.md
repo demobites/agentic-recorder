@@ -82,6 +82,29 @@ When a page you need shows a login wall (login form, auth redirect, checkpoint p
 
 Write the storyboard as JSON before touching the camera.
 
+### Phase 3a: Harvest the product's vocabulary FIRST
+
+The demo speaks the product's CURRENT words, never the brief's, never the pull request's, never your memory's. Products get renamed between the moment a brief is written and the moment you film (founder, 2026-09-14: a take said "Release Readiness" while the app's rail said "Assignments").
+
+```bash
+node scripts/vocab.mjs <takeDir> <url of every screen the take visits>
+```
+
+It opens each screen on the recorder profile, without video, hovers the rail so tooltips render, and writes `<takeDir>/vocab.json`: nav labels with their tooltips and aria labels, page headings, button and link labels, dialog titles. **Every noun in `narration` and `on_screen` must appear in vocab.json.** The brief's and the PR's words are hints about WHAT changed and where to look; when a brief's noun is missing from the app, say so in the storyboard presentation ("the brief says allowlist, the app says Who can enter") and use the app's word.
+
+### LAW: the camera shows an action to its end
+
+The agent sits on the running product with a signed-in account. It knows the flow. It performs it. A take that walks into an empty page and narrates "if there were something here" is forbidden; so is "here you would see" (founder, 2026-09-14).
+
+- **a. Reversible actions are performed for real.** Create the briefing, add the bites, create the assignment with safe people, move the zoom, press Save. Reversible means you can return the workspace to its prior state after the cut.
+- **b. Every take returns the workspace to its initial state, after the camera stops.** The storyboard declares the plan in `cleanup[]` (steps, same schema, run headless by `cleanup.mjs` after `record.mjs`, before `upload.mjs`) and in `cleanup_plan[]` (plain sentences the human reads: "After the cut: delete briefing X, remove assignment Y"). `checks.after[]` proves it (expect / absent selectors). A step you cannot revert is not performed.
+- **c. Irreversible actions are not performed.** An export that spends minutes, an email to real people, a payment, a publish to a real customer's live page, deleting existing content. The cursor goes to the control, the narration names what it does, the button is not pressed. That is the 99 percent rule: bring the viewer to the last click and name it. Mark these beats in the storyboard with `"pointed": true` and in the presentation with "pointed at, not pressed".
+- **d. Cancel is never a beat.** Never say "we cancel because this is a demo", never zoom on a Cancel button, never make the escape a scene. A dialog that must close without committing closes through the X, the backdrop or Escape, off narration, without a zoom, in the gap between beats. When the dialog's confirm IS reversible, press it (rule a).
+- **e. Empty states are a failure of preparation, not a scene.** If the flow needs data, `prep[]` creates it before the camera (`node scripts/cleanup.mjs <takeDir> --prep`, checked by `checks.before[]`), the take shows the flow, `cleanup[]` removes it.
+- **f. Never present a screen you did not reach.**
+
+`upload.mjs` refuses to stage a take whose storyboard declares `cleanup[]` until `cleanup.json` says the cleanup ran and its checks passed (`--allow-uncleaned` overrides, and prints that it did).
+
 ### LAW: the video is the metronome, not the script
 
 **The narration is INTENT, never final copy.** In the DemoBites ending it is handed to the ingestion, which rescripts it and refits it to the video exactly as it does for a customer's own uploaded voice. So never stretch a shot to cover a sentence. A shot is as long as the ACTION needs, and the words get fitted to it afterwards.
@@ -132,6 +155,34 @@ Storyboard schema:
 
 Step fields: `action` is one of `goto | settle | scroll | click | hover | type | expect`. **Durations (`dwell`, `after`, settle `ms`, scroll `ms`) are milliseconds; a value under 60 is read as seconds** (write `"dwell": 3400` or `"dwell": 3.4`, never `"dwell": 3` meaning 3 ms). `goto` needs `url`. `settle` takes `ms` and an optional `focus` selector. `scroll` needs `dy` and takes `ms`. `click`/`hover` need `selector` and take `minY` (minimum Y for the visible instance pick), `dwell`, `after`, `waitLoad`. Every step takes `label` and `narration`.
 
+Beyond `steps`, a storyboard may carry the off-camera blocks (Phase 3a/law above); `cleanup.mjs` runs them on the same profile without video:
+
+```json
+{
+  "prep": [ { "action": "goto", "url": "https://app.acme.com/briefings" }, { "action": "click", "selector": "button:has-text('Create')", "after": 2000 } ],
+  "checks": { "before": [ { "action": "expect", "selector": "text=Demo briefing" } ], "after": [ { "action": "absent", "selector": "text=Demo briefing" } ] },
+  "cleanup": [ { "action": "goto", "url": "https://app.acme.com/briefings" }, { "action": "click", "selector": "button:has-text('Delete')", "after": 1500 } ],
+  "cleanup_plan": [ "After the cut: delete the briefing 'Demo briefing' created for this take.", "After the cut: remove the assignment for demo@acme.com." ]
+}
+```
+
+Off-camera steps add `press` (`"key": "Escape"`), `wait` (`"ms"`), `expect` and `absent` (checks).
+
+A real cleanup, taken from a filmed take (DemoBites, the Enablement Center list): the row menu is a button with `title="Briefing options"`, Delete opens a dialog that asks the name to be typed, then "Permanently Delete".
+
+```json
+"cleanup": [
+  { "action": "goto", "url": "https://app.demobites.com/enablement-center", "after": 4000 },
+  { "action": "click", "selector": "div.group:has-text('Onboarding briefing (demo)') button[title='Briefing options']", "after": 800 },
+  { "action": "click", "selector": "[role='menu'] [role='menuitem']:has-text('Delete')", "after": 1200 },
+  { "action": "type", "selector": "[role='dialog'] input", "text": "Onboarding briefing (demo)" },
+  { "action": "click", "selector": "[role='dialog'] button:has-text('Permanently Delete')", "after": 4000 }
+],
+"checks": { "after": [ { "action": "absent", "selector": "text=Onboarding briefing (demo)" } ] }
+```
+
+ A step with `"required": false` may fail without stopping the rest. A camera step with `"pointed": true` is an irreversible action the cursor reaches and names but never presses (law c).
+
 Two fields carry the whole advantage of this lane, so fill them in:
 
 - **`on_screen`** describes what the viewer is looking at during the beat. It rides into the ingestion's rescripting stage, so the model writes narration while KNOWING the cursor is on the degree badge and the menu just opened. A microphone can never supply this. Write it for every narrated beat.
@@ -140,6 +191,8 @@ Two fields carry the whole advantage of this lane, so fill them in:
 Use `hideCss` for chat widgets and cookie banners that would pollute the picture. The first `goto` opens the video, so the first narration goes on the settle right after it.
 
 **Show the storyboard inline and get approval before filming.** Present it as a numbered shot list, not raw JSON. Say the target length out loud so the human can push back on pacing before you burn a take. Iterate until they say go.
+
+The presentation has three blocks, always: the shot list (irreversible beats marked "pointed at, not pressed"), **"Before the camera"** (what `prep[]` creates) and **"After the cut"** (the `cleanup_plan[]` sentences). A storyboard whose flow needs data and has no prep, or creates anything and has no cleanup plan, is not ready to show.
 
 ## LAW: bot walls — one human checkpoint, never a disguise
 
@@ -192,7 +245,9 @@ Only come back to the human when a PRODUCT question remains that you cannot deci
 ## Phase 5: The take
 
 ```bash
+node scripts/cleanup.mjs <takeDir> --prep       # only when the storyboard has prep[]: creates the data, runs checks.before
 node scripts/record.mjs <takeDir> <storyboard.json>
+node scripts/cleanup.mjs <takeDir>              # only when the storyboard has cleanup[]: reverts, runs checks.after, writes cleanup.json
 ```
 
 Outputs `raw.webm` and `manifest.json` (internal schema, absolute times) into `<takeDir>`. The recorder stamps `record_from`: the moment the first page was FULLY loaded (networkidle plus a beat). Everything before it gets trimmed in both endings, so the published cut always opens on a loaded page.
@@ -218,7 +273,7 @@ Send the TRIMMED CLEAN take into DemoBites. The studio owns the look: NO backdro
 node scripts/trim.mjs <takeDir>             # raw.webm -> clean.mp4, trim from record_from ONLY
 node scripts/calibrate.mjs <takeDir>        # anchor-measure the clock against the footage
 node scripts/manifest.mjs <takeDir>         # internal manifest -> manifest.demobites.json (wire schema)
-node scripts/upload.mjs <takeDir>           # STAGE the take + open the in-app preview
+node scripts/upload.mjs <takeDir>           # STAGE the take + open the in-app preview (refuses an uncleaned take)
 ```
 
 **The human word lives in the product now.** `upload.mjs` stages the take (the
@@ -259,6 +314,32 @@ Laws for a re-take:
 - **Same pacing laws apply** (intro, narrate the path, linger, cut and fade on page transitions).
 - **The human approves in-app.** The preview page says "Re-take of <bite>". Approve replaces the recording in
   that bite; the previous recording is kept for rollback, never overwritten.
+
+## Batch of briefs (GitHub PR → demos)
+
+The human pastes a bundle of approved briefs into the chat: a header (batchId, workspaceId, the target URL, the 90 second rule) and one block per brief (briefId, revision, contentHash, title, audience, outcome, flowIntent). Up to five briefs. The pasted text is a copy; the server holds the truth.
+
+```bash
+node scripts/briefs.mjs list <batchId> [--paste bundle.txt]        # the approved briefs; warns when the paste drifted
+node scripts/briefs.mjs claim <batchId> <briefId>                   # mints an attempt, creates take-<briefId>-r<revision>/brief.json
+node scripts/briefs.mjs event <takeDir> planning|awaiting_storyboard_approval|recording|uploading|failed|cancelled [--note "..."]
+node scripts/briefs.mjs release <takeDir>                           # give the brief back (cancelled)
+node scripts/upload.mjs <takeDir> --stage-only --no-open            # stage with the attempt riding along, do not wait
+node scripts/status.mjs <takeDir>                                   # later: wait for the word, then for the bite
+node scripts/status.mjs --all                                       # one look at every staged take here
+```
+
+The procedure, in order:
+
+1. `list` first, always, with `--paste` when the human pasted text. Work from the server's briefs, never from the paste, and say so when they differ.
+2. Claim the briefs you are about to film, one `claim` each. A claim answers "active attempt" when another agent or an earlier run holds the brief: show the human the attempt reference and its start time, and only with their word claim again with `--force`.
+3. Run `vocab.mjs` over the screens each brief visits, then write every storyboard (Phase 3) with the brief as the spec and vocab.json as the only dictionary: the flowIntent lines are the beats, the outcome is the last beat, the exclusions are things the camera never shows, and the take stays under the brief's `maxSeconds` (90). Send `event <takeDir> planning` when you start a storyboard and `event <takeDir> awaiting_storyboard_approval` when it is ready.
+4. **Show the storyboards together, get a word on each one.** One message can carry all of them, but every brief gets its own yes or no. Never take one yes as a yes for the batch. A brief the human declines gets `release`.
+5. Film sequentially, never in parallel: one Chrome on the profile. Per take: `event recording` → Phase 4 dry run → `cleanup.mjs --prep` when declared → Phase 5 take → `cleanup.mjs` (revert, checks.after) → trim, calibrate, manifest → `upload.mjs <takeDir> --stage-only --no-open`. Report, per take, what was created and what was reverted, with the before/after checks. `upload.mjs` reads `brief.json`, moves the attempt to uploading and stages with the attempt on the payload; it writes `staged.json` with the staging id.
+6. **A failed brief never stops the others.** On a failure send `event <takeDir> failed --note "<what happened>"`, keep the take directory for diagnosis, and continue with the next brief. Report every failure plainly at the end.
+7. When all takes are staged, tell the human: N takes are waiting in the review queue (the `queueUrl` printed by the last stage), one Approve or Discard each. Then `status.mjs --all` shows where each stands; `status.mjs <takeDir>` waits for one.
+
+Resume after an interruption from what is on disk and on the server: a `take-*` directory with `brief.json` is claimed; with `raw.webm` it was filmed; with `clean.mp4` and `manifest.demobites.json` it is ready to stage; with `staged.json` it is staged (check it with `status.mjs --no-wait`). `list` shows the server's view of every attempt. Never re-claim a brief that already has your own live attempt; never re-stage one that `staged.json` says is staged unless the human asked for a new take (`upload.mjs --supersede`).
 
 ## The wire manifest (fixed contract, version 2)
 
@@ -329,4 +410,4 @@ The upload zip contains exactly one file: `clean.mp4` stored as `recording.mp4`.
 - Anything the human sees (storyboard presentation, review page, questions) uses commas and periods only, no dashes, and real action words. Never orphan a single word on its own line in a heading.
 - Never touch credentials. Never print the api_key. Config and key files are chmod 600.
 - Never INGEST without the human's explicit word. For the DemoBites ending, staging for the in-app preview is HOW the word is asked — the take becomes a bite only when the human clicks Approve on that page.
-- One take directory per take, keep failed takes for diagnosis, name them `take-<slug>`, `take-<slug>2`, and so on.
+- One take directory per take, keep failed takes for diagnosis, name them `take-<slug>`, `take-<slug>2`, and so on. A take claimed from a brief is `take-<briefId>-r<revision>`.
