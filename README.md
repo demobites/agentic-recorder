@@ -130,6 +130,8 @@ When your UI changes, **Retake** can refilm an existing Bite from its saved reci
 npx demobite retake <biteId> --note "Export moved to the header"
 ```
 
+**Batches of briefs.** When a pull request in DemoBites produces approved briefs, your agent claims them, films one take per brief after you approve each storyboard, and delivers each take. A delivered take becomes a Bite in DemoBites by itself; there is no second review click for these takes. Nothing is published or shared.
+
 The package also includes a DemoBites management MCP for releases and centers:
 
 ```bash

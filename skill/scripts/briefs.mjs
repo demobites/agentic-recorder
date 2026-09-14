@@ -11,7 +11,9 @@
 //   GET /api/recorder/briefs?batch=<batchId>
 //   PUT /api/recorder/briefs/claim { briefId, revision, contentHash, idempotencyKey, force? }
 //   PUT /api/recorder/briefs/attempts/<attemptRef> { event, note? }
-// The stage call (upload.mjs) sends the attempt from <takeDir>/brief.json.
+// The stage call (upload.mjs) sends the attempt from <takeDir>/brief.json, and
+// after the uploads calls the delivery route from the claim's `api.uploaded`
+// (1.3.0): a take filmed from a brief becomes a bite by itself.
 //
 // Laws: one storyboard approval per brief, never one word for the batch.
 // Sequential takes, one Chrome on the profile. A failed brief never stops the
@@ -140,7 +142,7 @@ if (cmd === "claim") {
   const record = {
     batchId, briefId: brief.briefId, revision: brief.revision, contentHash: brief.contentHash, attemptRef: r.json.attemptRef,
     brief: r.json.brief ?? brief, target: r.json.target ?? data.batch?.target ?? null, rules: r.json.rules ?? { maxSeconds: 90 },
-    source: data.batch?.source ?? null, claimedAt: new Date().toISOString(),
+    source: data.batch?.source ?? null, api: r.json.api ?? data.api ?? null, claimedAt: new Date().toISOString(),
   };
   fs.writeFileSync(path.join(dir, "brief.json"), JSON.stringify(record, null, 2) + "\n");
   console.log(`Claimed ${brief.briefId} r${brief.revision} → ${dir}/brief.json (attempt ${r.json.attemptRef}, at most ${record.rules.maxSeconds}s)`);

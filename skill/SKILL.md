@@ -9,7 +9,7 @@ You are the camera operator, the director, and the editor. You film a real brows
 
 All scripts live in `scripts/` beside this file. They are plain Node ESM. Requirements: Node 18+. `npx demobite` installs Playwright, ffmpeg and ffprobe beside the skill; every script resolves the media tools through `scripts/media-tools.mjs` (a compatible system build first, then the packaged one). Never call `ffmpeg` or `ffprobe` by bare name in a new script. Run every script from the project directory so `.recorder/` lands next to the project.
 
-Follow the phases in order. Never skip the storyboard approval. Never ingest before the human's word — for DemoBites, Approve on the in-app preview page IS the word.
+Follow the phases in order. Never skip the storyboard approval. Never ingest before the human's word — for DemoBites, Approve on the in-app preview page IS the word. For a batch of briefs the word was given twice already, on the batch and on each storyboard: a delivered take becomes a bite by itself (see Batch of briefs).
 
 ## Phase 0: Auth gate, ALWAYS FIRST — with the human's word
 
@@ -313,7 +313,9 @@ Laws for a re-take:
   with the bite's current text per step. Only remove lines whose beats you dropped.
 - **Same pacing laws apply** (intro, narrate the path, linger, cut and fade on page transitions).
 - **The human approves in-app.** The preview page says "Re-take of <bite>". Approve replaces the recording in
-  that bite; the previous recording is kept for rollback, never overwritten.
+  that bite; the previous recording is kept for rollback, never overwritten. A re-take filmed from a brief
+  (a take with an attempt) is delivered instead: the new recording replaces the current one by itself, and
+  the promoted export stays as it is until a version is published.
 
 ## Batch of briefs (GitHub PR → demos)
 
@@ -324,9 +326,9 @@ node scripts/briefs.mjs list <batchId> [--paste bundle.txt]        # the approve
 node scripts/briefs.mjs claim <batchId> <briefId>                   # mints an attempt, creates take-<briefId>-r<revision>/brief.json
 node scripts/briefs.mjs event <takeDir> planning|awaiting_storyboard_approval|recording|uploading|failed|cancelled [--note "..."]
 node scripts/briefs.mjs release <takeDir>                           # give the brief back (cancelled)
-node scripts/upload.mjs <takeDir> --stage-only --no-open            # stage with the attempt riding along, do not wait
-node scripts/status.mjs <takeDir>                                   # later: wait for the word, then for the bite
-node scripts/status.mjs --all                                       # one look at every staged take here
+node scripts/upload.mjs <takeDir> --stage-only --no-open            # deliver: the take becomes a bite by itself, do not wait
+node scripts/status.mjs <takeDir>                                   # later: wait for the bite to finish (retries a failed delivery)
+node scripts/status.mjs --all                                       # one look at every delivered take here
 ```
 
 The procedure, in order:
@@ -335,11 +337,11 @@ The procedure, in order:
 2. Claim the briefs you are about to film, one `claim` each. A claim answers "active attempt" when another agent or an earlier run holds the brief: show the human the attempt reference and its start time, and only with their word claim again with `--force`.
 3. Run `vocab.mjs` over the screens each brief visits, then write every storyboard (Phase 3) with the brief as the spec and vocab.json as the only dictionary: the flowIntent lines are the beats, the outcome is the last beat, the exclusions are things the camera never shows, and the take stays under the brief's `maxSeconds` (90). Send `event <takeDir> planning` when you start a storyboard and `event <takeDir> awaiting_storyboard_approval` when it is ready.
 4. **Show the storyboards together, get a word on each one.** One message can carry all of them, but every brief gets its own yes or no. Never take one yes as a yes for the batch. A brief the human declines gets `release`.
-5. Film sequentially, never in parallel: one Chrome on the profile. Per take: `event recording` → Phase 4 dry run → `cleanup.mjs --prep` when declared → Phase 5 take → `cleanup.mjs` (revert, checks.after) → trim, calibrate, manifest → `upload.mjs <takeDir> --stage-only --no-open`. Report, per take, what was created and what was reverted, with the before/after checks. `upload.mjs` reads `brief.json`, moves the attempt to uploading and stages with the attempt on the payload; it writes `staged.json` with the staging id.
+5. Film sequentially, never in parallel: one Chrome on the profile. Per take: `event recording` → Phase 4 dry run → `cleanup.mjs --prep` when declared → Phase 5 take → `cleanup.mjs` (revert, checks.after) → trim, calibrate, manifest → `upload.mjs <takeDir> --stage-only --no-open`. Report, per take, what was created and what was reverted, with the before/after checks. `upload.mjs` reads `brief.json`, moves the attempt to uploading, stages with the attempt on the payload, and after the two uploads calls the delivery route: the take becomes a bite in DemoBites by itself, no Approve click, and the line reads `delivered: bite <id>`. It writes `staged.json` with the staging id and the bite id.
 6. **A failed brief never stops the others.** On a failure send `event <takeDir> failed --note "<what happened>"`, keep the take directory for diagnosis, and continue with the next brief. Report every failure plainly at the end.
-7. When all takes are staged, tell the human: N takes are waiting in the review queue (the `queueUrl` printed by the last stage), one Approve or Discard each. Then `status.mjs --all` shows where each stands; `status.mjs <takeDir>` waits for one.
+7. When all takes are delivered, tell the human: N takes were delivered and are becoming bites in DemoBites by themselves, with the bite ids. `status.mjs --all` shows where each stands; `status.mjs <takeDir>` waits for one to finish and prints what landed (the Phase 6 receipt law holds: no studio link before the bite is completed). A take the server would not deliver (upload.mjs printed the error) waits in the review queue; `status.mjs <takeDir>` tries the delivery again, and on an older DemoBites waits for the word in the app as before. Deliver each take; never publish, never share, never send invitations.
 
-Resume after an interruption from what is on disk and on the server: a `take-*` directory with `brief.json` is claimed; with `raw.webm` it was filmed; with `clean.mp4` and `manifest.demobites.json` it is ready to stage; with `staged.json` it is staged (check it with `status.mjs --no-wait`). `list` shows the server's view of every attempt. Never re-claim a brief that already has your own live attempt; never re-stage one that `staged.json` says is staged unless the human asked for a new take (`upload.mjs --supersede`).
+Resume after an interruption from what is on disk and on the server: a `take-*` directory with `brief.json` is claimed; with `raw.webm` it was filmed; with `clean.mp4` and `manifest.demobites.json` it is ready to stage; with `staged.json` it is delivered or staged (check it with `status.mjs --no-wait`). `list` shows the server's view of every attempt. Never re-claim a brief that already has your own live attempt; never re-stage one that `staged.json` says is delivered or staged unless the human asked for a new take (`upload.mjs --supersede`).
 
 ## The wire manifest (fixed contract, version 2)
 
@@ -394,7 +396,12 @@ PUT <base>/api/recorder/stage  (Authorization: Bearer <api_key>)
   -> { stagingId, uploadUrl, previewUploadUrl, videoKey, previewUrl }
 
 GET <base>/api/recorder/stage?id=<stagingId>  (Authorization: Bearer <api_key>)
-  -> { status: 'pending'|'approving'|'approved'|'rejected', biteId, biteUKey, biteStatus, studioUrl }
+  -> { status: 'pending'|'approving'|'approved'|'delivered'|'rejected', biteId, biteUKey, biteStatus, studioUrl }
+
+PUT <base>/api/recorder/stage/<stagingId>/uploaded  (Authorization: Bearer <api_key>)   // DELIVERY: brief takes only, after both uploads
+  {}   // the url comes from the claim's api.uploaded ("{origin}/api/recorder/stage/{id}/uploaded"); this path is the fallback
+  -> 200 { biteId, videoId } | 202 { biteId, queued:true } | 200 { pending:true } (older server: wait for the word) | 404/409 { error }
+  // idempotent: a repeat returns the same bite
 
 GET <base>/api/recorder/status?biteId=<id>  (Authorization: Bearer <api_key>)
   -> { status, title, durationSec, narrationReady, narrationTotal, zooms }        (STARTS the pipeline, not done)
@@ -409,5 +416,5 @@ The upload zip contains exactly one file: `clean.mp4` stored as `recording.mp4`.
 
 - Anything the human sees (storyboard presentation, review page, questions) uses commas and periods only, no dashes, and real action words. Never orphan a single word on its own line in a heading.
 - Never touch credentials. Never print the api_key. Config and key files are chmod 600.
-- Never INGEST without the human's explicit word. For the DemoBites ending, staging for the in-app preview is HOW the word is asked — the take becomes a bite only when the human clicks Approve on that page.
+- Never INGEST without the human's explicit word. For the DemoBites ending, staging for the in-app preview is HOW the word is asked — the take becomes a bite only when the human clicks Approve on that page. For a batch of briefs the word was given on the batch and on each storyboard, and delivery ingests by itself. Never publish, never share, never send invitations.
 - One take directory per take, keep failed takes for diagnosis, name them `take-<slug>`, `take-<slug>2`, and so on. A take claimed from a brief is `take-<briefId>-r<revision>`.
