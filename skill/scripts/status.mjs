@@ -1,8 +1,9 @@
 // Where a staged take stands, and the wait for its word.
 //
-//   node status.mjs <takeDir>            wait for the decision, then for the bite to finish (reads <takeDir>/staged.json)
+//   node status.mjs <takeDir>            wait for the decision (or, delivered, for the bite to finish); reads <takeDir>/staged.json
+//                                        a take whose delivery failed is delivered again here first (idempotent on the server)
 //   node status.mjs <stagingId>          same, by id
-//   node status.mjs <takeDir> --no-wait  one look, no waiting: pending | approved (+bite status) | rejected
+//   node status.mjs <takeDir> --no-wait  one look, no waiting: pending | delivered (+bite status) | approved (+bite status) | rejected
 //   node status.mjs --all                one look at every take-*/staged.json under the current directory
 //
 // A batch stages every take with `upload.mjs --stage-only --no-open`, then the
@@ -10,7 +11,7 @@
 // upload.mjs: no studio link before the bite is completed.
 import fs from "node:fs";
 import path from "node:path";
-import { waitForDecision, peekStaged } from "./stage-wait.mjs";
+import { waitForDecision, peekStaged, deliverStaged } from "./stage-wait.mjs";
 
 const args = process.argv.slice(2);
 const noWait = args.includes("--no-wait");
@@ -36,6 +37,7 @@ function readStaged(dir) {
 function describe(st) {
   if (!st.ok) return `unreachable (${st.httpStatus})`;
   if (st.status === "rejected") return "discarded in the app";
+  if (st.status === "delivered") return `delivered, bite ${st.biteId ?? "?"} ${st.biteStatus ?? "processing"}`;
   if (st.status === "approved") return `approved, bite ${st.biteId ?? "?"} ${st.biteStatus ?? "processing"}`;
   return "waiting for the word in the app";
 }
@@ -53,20 +55,35 @@ if (all) {
 
 let stagingId = target;
 let pageUrl = null;
+let delivered = false;
 if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
   const staged = readStaged(target);
   if (!staged?.stagingId) { console.error(`${target} has no staged.json. Stage it first: node scripts/upload.mjs ${target} --stage-only`); process.exit(1); }
   stagingId = staged.stagingId;
   pageUrl = staged.previewUrl ?? null;
+  delivered = staged.delivered === true;
+  // A brief take whose delivery failed (network, 409) is delivered again here;
+  // the server is idempotent. An older server (pending) is left alone.
+  if (staged.attemptRef && staged.delivered === false && staged.pending !== true) {
+    const d = await deliverStaged({ base, apiKey: cfg.api_key, stagingId, template: staged.api?.uploaded ?? null });
+    if (d.delivered) {
+      delivered = true;
+      console.log(`delivered: bite ${d.biteId}${d.queued ? " (ingest queued)" : ""}. It becomes a bite in DemoBites by itself.`);
+      try { fs.writeFileSync(path.join(target, "staged.json"), JSON.stringify({ ...staged, delivered: true, biteId: d.biteId, videoId: d.videoId ?? null, queued: d.queued ?? null, deliveryError: null }, null, 2) + "\n"); } catch {}
+    } else if (d.pending) {
+      try { fs.writeFileSync(path.join(target, "staged.json"), JSON.stringify({ ...staged, pending: true }, null, 2) + "\n"); } catch {}
+      console.log("This DemoBites does not deliver by itself yet; the take waits for the word in the app.");
+    } else console.error(`Not delivered: ${d.error}. The take waits in the review queue.`);
+  }
 }
 if (!pageUrl) pageUrl = `${base}/recording-preview/agentic/${encodeURIComponent(stagingId)}`;
 
 if (noWait) {
   const st = await peekStaged({ base, apiKey: cfg.api_key, stagingId });
   console.log(`${stagingId}: ${describe(st)}`);
-  if (st.ok && st.status === "approved" && st.biteStatus === "completed" && st.studioUrl) console.log(`Studio: ${new URL(st.studioUrl, base).toString()}`);
+  if (st.ok && (st.status === "approved" || st.status === "delivered") && st.biteStatus === "completed" && st.studioUrl) console.log(`Studio: ${new URL(st.studioUrl, base).toString()}`);
   process.exit(st.ok ? 0 : 1);
 }
 
-const outcome = await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl });
+const outcome = await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl, delivered });
 process.exit(outcome.exitCode);
