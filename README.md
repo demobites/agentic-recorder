@@ -150,9 +150,8 @@ The default installer also attempts to register that MCP with Claude Code when t
 | `skill/` | Studio-connected recorder instructions, login, upload, and Retake. |
 | `scripts/` | Shared browser recording, trimming, and timing calibration. |
 | `recorder/` | Standalone skill and local video finishing tools. |
-| `aliases/` | `agentic-recorder` and `demobites` aliases for the same launcher. |
 
-Run `npx demobite@latest` again to update the installed skill. For publishing instructions, see [RELEASING.md](RELEASING.md).
+The same package is published under three names, `demobite`, `agentic-recorder` and `demobites`, always at the same version; `npx agentic-recorder@latest` and `npx demobites@latest` do exactly what `npx demobite@latest` does. Run it again to update the installed skill. For publishing instructions, see [RELEASING.md](RELEASING.md).
 
 Found something confusing or have an example to share? [Open an issue](https://github.com/demobites/agentic-recorder/issues). Include your operating system, agent, and recorder version. Remove keys, cookies, and private app data from logs or recordings before attaching them.
 

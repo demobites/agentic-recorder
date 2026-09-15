@@ -1,31 +1,13 @@
-# Releasing demobite
+# Releasing
 
-Three npm names run this launcher. Only ONE of them carries the code.
+One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
-| Package | What it is |
-|---|---|
-| `demobite` | the launcher, the skill, the recorder. The only package you edit. |
-| `agentic-recorder` | alias: depends on `demobite ^1`, its bin imports the launcher |
-| `demobites` | alias: same |
+## Every release (major, minor or patch)
+
+1. Bump `version` in `package.json` and commit.
+2. `npm run release` (add `-- --dry-run` to rehearse). It publishes the version under each of the three names, restores `package.json`, and reads the three versions back from the registry.
+3. Tag: `git tag -a v<version> -m "<title>" && git push origin v<version>`.
+
+A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and leave the other two behind. If a release stops halfway (npm refuses to republish a version that already landed), bump the patch and run the release again so all three names end on the same number.
 
 `agenticrecorder` (no hyphen) cannot be published by anyone: npm refuses names that differ only by punctuation from an existing package. Owning `agentic-recorder` protects it.
-
-## Normal release (minor or patch)
-
-1. Bump `version` in `package.json`, commit, push.
-2. `npm publish` from your own terminal (npm asks for a browser approval on every publish; that cannot run from an agent).
-3. Nothing else. The aliases resolve `demobite` to the newest 1.x at install time, so they pick the release up on their own.
-
-`prepublishOnly` runs `scripts/check-aliases.mjs` and stops the publish if an alias would be stranded.
-
-## Major release (1.x → 2.0.0)
-
-The caret range in the aliases covers one major only. Before publishing demobite 2.0.0:
-
-1. In `aliases/agentic-recorder/package.json` and `aliases/demobites/package.json`, set `dependencies.demobite` to `^2.0.0` and `version` to `2.0.0`.
-2. Publish each alias from your own terminal: `cd aliases/<name> && npm publish --access public`.
-3. Then publish demobite. The guard will pass.
-
-## Cosmetic
-
-The aliases' own version numbers only change when they are republished. They may lag behind demobite; that is fine and does not affect what users get.
