@@ -158,7 +158,8 @@ if (arg === "retake") {
 
 // Batch of briefs (2026-09-13): `npx demobite briefs list <batchId>` etc. and
 // `npx demobite status <takeDir|stagingId>` hand straight to the skill scripts.
-if (arg === "briefs" || arg === "status") {
+// WORKSPACE RULES (1.4): `npx demobite rules` prints the workspace's standing rules.
+if (arg === "briefs" || arg === "status" || arg === "rules") {
   let cfg = readCfg();
   if (!cfg?.api_key) {
     console.log("\n  Not connected yet — linking this machine to DemoBites first…\n");

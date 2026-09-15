@@ -68,6 +68,23 @@ Write the answers to `.recorder/config.json` and never ask again:
 
 `login.mjs` later merges `api_key` and `workspace` into this same file and chmods it 600. Treat the file as secret once a key is in it. Never print `api_key`.
 
+## Phase 1b: Workspace rules, EVERY run
+
+The workspace admin can write standing rules for the recorder in plain words, one per line, in the DemoBites settings tab "Agentic Recorder Rules" ("Mask any number with a dollar sign.", "Never open the Billing page.", "Say Update Center, never changelog."). They apply to every take filmed in that workspace. At the start of EVERY run, batch or free prompt, right after the key resolves the workspace and BEFORE any storyboard:
+
+```bash
+node scripts/rules.mjs [<takeDir>]     # fetches the rules fresh, writes .recorder/rules.json, prints them numbered
+```
+
+It fetches `GET <base>/api/recorder/rules` with the recorder key (never cached). When the fetch fails it falls back to the snapshot the claim wrote into `<takeDir>/brief.json` (`workspaceRules`), then to no rules, and prints which of the three it used; repeat that line in your report. Then:
+
+- Fold the rules into your storyboard thinking as **standing rules of the workspace, BELOW the filming laws**. A rule never lifts a law: an irreversible action stays pointed at and never pressed, Cancel is never a beat, the human still approves every storyboard, and nothing is published or shared.
+- Every beat a rule shaped carries `"rules": [1, 3]` (the rule numbers as printed), and the storyboard carries `"rulesVersion": <version>` at the top. The presentation shows "Rules applied: 1, 3" on those beats and lists the rules once. A rule that cannot be honoured in this flow is said out loud in the presentation, never silently dropped.
+- The prep, take and cleanup legs obey the rules too (a "never open" page is never opened, not even off camera).
+- Masking rules ("mask emails", "hide amounts") become `hideCss` rules or text masks with what the skill has today: find the element on the live page (Phase 4) and blank it with `color: transparent` plus a soft `text-shadow`, `filter: blur(6px)`, or `display: none` when the element may vanish. Keep masked words out of `narration` and `on_screen` too.
+- Vocabulary rules ("say X, never Y") win over vocab.json for that noun, as long as X appears in the app or the rule; the rule is the admin's word.
+- `record.mjs` copies `rulesVersion` into `recipe.config`, and `manifest.mjs` into the stage manifest, so a re-take can tell which rule set it was filmed under.
+
 ## Phase 2: Target-app sign-in, only when a login wall appears
 
 The camera browser uses a persistent profile at `.recorder/profile`. Signed in sessions survive between takes.
@@ -134,7 +151,7 @@ Holding shots to cover estimated lines is what produced a 60 second take with th
 
 **LAW: page transitions are cut and faded, never watched.** When the story moves to another page, the viewer sees page one, a short fade, page two — never the loading blank. record.mjs stamps every mid-take `goto` and manifest.mjs cuts that window out with a fade (`cuts` in the wire manifest); the ingestion lays it on the bite as a timeline cut. No zoom and no narration live inside a cut (the studio forbids both), so put the line about the new page on the beat AFTER it has landed, and say goodbye to the old page BEFORE the goto.
 
-Storyboard schema:
+Storyboard schema (`rulesVersion` and per-step `rules` come from Phase 1b):
 
 ```json
 {
@@ -153,7 +170,7 @@ Storyboard schema:
 }
 ```
 
-Step fields: `action` is one of `goto | settle | scroll | click | hover | type | expect`. **Durations (`dwell`, `after`, settle `ms`, scroll `ms`) are milliseconds; a value under 60 is read as seconds** (write `"dwell": 3400` or `"dwell": 3.4`, never `"dwell": 3` meaning 3 ms). `goto` needs `url`. `settle` takes `ms` and an optional `focus` selector. `scroll` needs `dy` and takes `ms`. `click`/`hover` need `selector` and take `minY` (minimum Y for the visible instance pick), `dwell`, `after`, `waitLoad`. Every step takes `label` and `narration`.
+Step fields: `action` is one of `goto | settle | scroll | click | hover | type | expect`. `rules` (optional, any step) lists the numbers of the workspace rules that shaped the beat; the storyboard's top-level `rulesVersion` names the rule set (Phase 1b). **Durations (`dwell`, `after`, settle `ms`, scroll `ms`) are milliseconds; a value under 60 is read as seconds** (write `"dwell": 3400` or `"dwell": 3.4`, never `"dwell": 3` meaning 3 ms). `goto` needs `url`. `settle` takes `ms` and an optional `focus` selector. `scroll` needs `dy` and takes `ms`. `click`/`hover` need `selector` and take `minY` (minimum Y for the visible instance pick), `dwell`, `after`, `waitLoad`. Every step takes `label` and `narration`.
 
 Beyond `steps`, a storyboard may carry the off-camera blocks (Phase 3a/law above); `cleanup.mjs` runs them on the same profile without video:
 
@@ -335,7 +352,7 @@ The procedure, in order:
 
 1. `list` first, always, with `--paste` when the human pasted text. Work from the server's briefs, never from the paste, and say so when they differ.
 2. Claim the briefs you are about to film, one `claim` each. A claim answers "active attempt" when another agent or an earlier run holds the brief: show the human the attempt reference and its start time, and only with their word claim again with `--force`.
-3. Run `vocab.mjs` over the screens each brief visits, then write every storyboard (Phase 3) with the brief as the spec and vocab.json as the only dictionary: the flowIntent lines are the beats, the outcome is the last beat, the exclusions are things the camera never shows, and the take stays under the brief's `maxSeconds` (90). Send `event <takeDir> planning` when you start a storyboard and `event <takeDir> awaiting_storyboard_approval` when it is ready.
+3. Run `rules.mjs <takeDir>` (Phase 1b; the claim stored the batch's rules snapshot in brief.json as the fallback) and `vocab.mjs` over the screens each brief visits, then write every storyboard (Phase 3) with the brief as the spec, the workspace rules below the laws, and vocab.json as the only dictionary: the flowIntent lines are the beats, the outcome is the last beat, the exclusions are things the camera never shows, and the take stays under the brief's `maxSeconds` (90). Send `event <takeDir> planning` when you start a storyboard and `event <takeDir> awaiting_storyboard_approval` when it is ready.
 4. **Show the storyboards together, get a word on each one.** One message can carry all of them, but every brief gets its own yes or no. Never take one yes as a yes for the batch. A brief the human declines gets `release`.
 5. Film sequentially, never in parallel: one Chrome on the profile. Per take: `event recording` → Phase 4 dry run → `cleanup.mjs --prep` when declared → Phase 5 take → `cleanup.mjs` (revert, checks.after) → trim, calibrate, manifest → `upload.mjs <takeDir> --stage-only --no-open`. Report, per take, what was created and what was reverted, with the before/after checks. `upload.mjs` reads `brief.json`, moves the attempt to uploading, stages with the attempt on the payload, and after the two uploads calls the delivery route: the take becomes a bite in DemoBites by itself, no Approve click, and the line reads `delivered: bite <id>`. It writes `staged.json` with the staging id and the bite id.
 6. **A failed brief never stops the others.** On a failure send `event <takeDir> failed --note "<what happened>"`, keep the take directory for diagnosis, and continue with the next brief. Report every failure plainly at the end.
@@ -386,6 +403,9 @@ PUT <base>/api/recorder/device  { device_code }          (poll every `interval` 
 
 DELETE <base>/api/recorder/key  (Authorization: Bearer <api_key>)
   -> { revoked: true }                                    (logout)
+
+GET <base>/api/recorder/rules  (Authorization: Bearer <api_key>)   // WORKSPACE RULES (1.4): never cached
+  -> { workspaceId, rules: string | null, version, updatedAt }   (the claim's api.rules is the same url; workspaceRules on the claim is the snapshot)
 
 GET <base>/api/recorder/recipe?biteId=<id>  (Authorization: Bearer <api_key>)   // RE-TAKE: the bite's recipe
   -> { storyboard, config:{app,url,frame}, manifest, engine }   (404 no recipe; 402/403 plan gate)

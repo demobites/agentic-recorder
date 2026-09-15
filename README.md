@@ -130,6 +130,8 @@ When your UI changes, **Retake** can refilm an existing Bite from its saved reci
 npx demobite retake <biteId> --note "Export moved to the header"
 ```
 
+**Workspace rules.** A workspace admin can write standing rules for the recorder in plain words in the DemoBites settings tab Agentic Recorder Rules, one per line: what to mask, which pages never to open, which words to use. The agent reads them at the start of every take and applies them under its own filming laws; `npx demobite rules` prints them. Every take records the rules version it was filmed under.
+
 **Batches of briefs.** When a pull request in DemoBites produces approved briefs, your agent claims them, films one take per brief after you approve each storyboard, and delivers each take. A delivered take becomes a Bite in DemoBites by itself; there is no second review click for these takes. Nothing is published or shared.
 
 The package also includes a DemoBites management MCP for releases and centers:
