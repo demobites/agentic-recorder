@@ -322,8 +322,12 @@ if (cuts.length > 0) {
   camera.push(...clipped.sort((a, b) => a.t_start - b.t_start));
 }
 
+// WORKSPACE RULES (1.4): the stage manifest names the rules version the take was filmed under.
+let rulesVersion = null;
+try { const sb = JSON.parse(fs.readFileSync(path.join(dir, "storyboard.json"), "utf8")); if (Number.isInteger(sb.rulesVersion)) rulesVersion = sb.rulesVersion; } catch {}
 const wire = {
   version: 2,
+  ...(rulesVersion !== null ? { rulesVersion } : {}),
   app: man.app ?? "App",
   title: titleArg ?? man.title ?? `${man.app ?? "App"} demo`,
   frame: { width: 1920, height: 1080 },

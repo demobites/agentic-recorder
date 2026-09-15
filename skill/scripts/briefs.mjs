@@ -142,7 +142,9 @@ if (cmd === "claim") {
   const record = {
     batchId, briefId: brief.briefId, revision: brief.revision, contentHash: brief.contentHash, attemptRef: r.json.attemptRef,
     brief: r.json.brief ?? brief, target: r.json.target ?? data.batch?.target ?? null, rules: r.json.rules ?? { maxSeconds: 90 },
-    source: data.batch?.source ?? null, api: r.json.api ?? data.api ?? null, claimedAt: new Date().toISOString(),
+    source: data.batch?.source ?? null, api: r.json.api ?? data.api ?? null,
+    // WORKSPACE RULES (1.4): the claim carries a snapshot { version, text }; rules.mjs fetches fresh and falls back to it.
+    workspaceRules: r.json.workspaceRules ?? data.workspaceRules ?? null, claimedAt: new Date().toISOString(),
   };
   fs.writeFileSync(path.join(dir, "brief.json"), JSON.stringify(record, null, 2) + "\n");
   console.log(`Claimed ${brief.briefId} r${brief.revision} → ${dir}/brief.json (attempt ${r.json.attemptRef}, at most ${record.rules.maxSeconds}s)`);

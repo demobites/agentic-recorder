@@ -51,7 +51,11 @@ try {
   const cfgPath = path.resolve(".recorder/config.json");
   const cfg = fs.existsSync(cfgPath) ? JSON.parse(fs.readFileSync(cfgPath, "utf8")) : {};
   // Only the public shape — NEVER the api_key or workspace.
-  const config = { app: STORYBOARD.app ?? cfg.app ?? null, url: STORYBOARD.url ?? cfg.url ?? null, frame: cfg.frame ?? { width: 1920, height: 1080 }, base: cfg.base ?? "https://app.demobites.com" };
+  // WORKSPACE RULES (1.4): the storyboard names the rules version it was written under
+  // (rules.mjs prints it); the recipe carries it so a re-take can refuse an older rule set.
+  let rulesVersion = Number.isInteger(STORYBOARD.rulesVersion) ? STORYBOARD.rulesVersion : null;
+  if (rulesVersion === null) { try { const r = JSON.parse(fs.readFileSync(path.resolve(".recorder/rules.json"), "utf8")); if (Number.isInteger(r.version)) rulesVersion = r.version; } catch {} }
+  const config = { app: STORYBOARD.app ?? cfg.app ?? null, url: STORYBOARD.url ?? cfg.url ?? null, frame: cfg.frame ?? { width: 1920, height: 1080 }, base: cfg.base ?? "https://app.demobites.com", ...(rulesVersion !== null ? { rulesVersion } : {}) };
   fs.writeFileSync(path.join(DIR, "recipe.json"), JSON.stringify({ version: 1, lane: (process.env.CDP_WS_URL || STORYBOARD.cdpWsUrl) ? "cloud" : "skill", engine: ENGINE_VERSION, config }, null, 2));
 } catch (e) { console.error("recipe.json not written:", e.message); }
 fs.mkdirSync(DIR, { recursive: true });
