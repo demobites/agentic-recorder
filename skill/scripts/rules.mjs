@@ -45,7 +45,8 @@ try {
 if (!result && snapshot) result = { ...snapshot, source: "snapshot", updatedAt: null, workspaceId: null };
 if (!result) result = { version: 0, text: "", source: "none", updatedAt: null, workspaceId: null };
 
-const lines = result.text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+// One rule per line; a leading bullet or dash the admin typed is not part of the rule.
+const lines = result.text.split(/\r?\n/).map((s) => s.trim().replace(/^[•·\-*]+\s*/, "").trim()).filter(Boolean);
 const out = { ...result, lines, fetchedAt: new Date().toISOString() };
 try { fs.mkdirSync(path.dirname(cfgPath), { recursive: true }); fs.writeFileSync(path.resolve(".recorder", "rules.json"), JSON.stringify(out, null, 2) + "\n"); } catch (e) { console.error(`rules.json not written: ${e.message}`); }
 
