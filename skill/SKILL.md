@@ -52,7 +52,7 @@ Look for `.recorder/config.json` next to the project. If it exists, use it and a
 
 - **app**: the product's name as it should appear in titles.
 - **url**: the starting URL of the flow.
-- **frame**: decided per take, never asked. The default viewport is 1920x1014: DemoBites draws the dark macOS browser header on top at ingest, which makes a clean 1920x1080 canvas. A workspace rule that negates the header ("No browser header on the takes.") films at 1920x1080 with no header. The manifest and the recipe carry `frame` and `browserHeader` for the record.
+- **frame**: 1920x1080, never asked. DemoBites adds the dark macOS browser header on top of every take at ingest, as for an uploaded video; a workspace rule that negates it ("No browser header on the takes.") turns it off. The manifest and the recipe carry `frame` and `browserHeader` for the record.
 - **base**: defaults to `https://app.demobites.com`, only ask if the human mentions a different environment.
 
 Write the answers to `.recorder/config.json` and never ask again:

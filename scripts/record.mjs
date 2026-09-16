@@ -21,15 +21,14 @@ if (!outArg || !storyArg) {
 
 const STORYBOARD = JSON.parse(fs.readFileSync(storyArg, "utf8"));
 
-// BROWSER HEADER (founder ruling 2026-09-16): DemoBites draws the dark macOS
-// browser header at ingest on any recording that is not 16:9 (bar height
-// min(0.075·h, 0.0421875·w), rounded to even, stacked on top). So the default
-// viewport is 1920x1014: the transcode pads the upload into 1920x1080 and the
-// crop reader insets a 4 px letterbox, so 1014 → crop 1006 + bar 74 = exactly
-// 1080 (1004 would end at 1070). Unit-tested app side (recorder-ingest-frame).
-// Precedence: --viewport=WxH (the cloud runner passes it) → storyboard.viewport
-// → a workspace rule negating the header ("No browser header on the takes.",
-// same phrase test as the cloud runner) films at 1920x1080 → default 1014.
+// BROWSER HEADER (founder ruling 2026-09-16, final): the recording stays
+// 1920x1080 and DemoBites ADDS the dark macOS header on top at ingest, as it
+// does for an uploaded video; the studio places the taller container inside
+// its 16:9 canvas. The header is on by default; a workspace rule negating it
+// ("No browser header on the takes.", same phrase test as the cloud runner)
+// turns it off, and so does storyboard.browserHeader === false. The manifest
+// and the recipe carry browserHeader for the ingest to read. --viewport=WxH
+// and storyboard.viewport still override the frame when a lane needs it.
 const NO_HEADER_RE = /no browser header|without (a |the )?browser header|browser header off/i;
 function resolveDesign() {
   const flag = process.argv.slice(2).find((a) => a.startsWith("--viewport="));
@@ -37,14 +36,18 @@ function resolveDesign() {
   if (m) return { width: Number(m[1]), height: Number(m[2]), why: "--viewport" };
   const v = STORYBOARD.viewport;
   if (v && Number.isInteger(v.width) && Number.isInteger(v.height)) return { width: v.width, height: v.height, why: "storyboard.viewport" };
+  return { width: 1920, height: 1080, why: "default" };
+}
+function resolveHeader() {
+  if (typeof STORYBOARD.browserHeader === "boolean") return { on: STORYBOARD.browserHeader, why: "storyboard.browserHeader" };
   let rulesText = "";
   try { rulesText = JSON.parse(fs.readFileSync(path.resolve(".recorder/rules.json"), "utf8")).text ?? ""; } catch {}
-  if (NO_HEADER_RE.test(rulesText)) return { width: 1920, height: 1080, why: "workspace rule: no browser header" };
-  return { width: 1920, height: 1014, why: "default, DemoBites draws the browser header at ingest" };
+  if (NO_HEADER_RE.test(rulesText)) return { on: false, why: "workspace rule: no browser header" };
+  return { on: true, why: "default, DemoBites adds the browser header at ingest" };
 }
 const { why: DESIGN_WHY, ...DESIGN } = resolveDesign();
-const BROWSER_HEADER = Math.abs(DESIGN.width / DESIGN.height - 16 / 9) >= 0.001;
-console.log(`viewport ${DESIGN.width}x${DESIGN.height} (${DESIGN_WHY}); browser header: ${BROWSER_HEADER ? "yes" : "no"}`);
+const { on: BROWSER_HEADER, why: HEADER_WHY } = resolveHeader();
+console.log(`viewport ${DESIGN.width}x${DESIGN.height} (${DESIGN_WHY}); browser header: ${BROWSER_HEADER ? "yes" : "no"} (${HEADER_WHY})`);
 const ACTIONS = new Set(["goto", "settle", "scroll", "click", "hover", "type", "expect"]);
 if (!Array.isArray(STORYBOARD.steps) || STORYBOARD.steps.length === 0) {
   console.error("Storyboard has no steps.");
