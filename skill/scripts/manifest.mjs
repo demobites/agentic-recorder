@@ -47,6 +47,8 @@ for (let i = 1; i < args.length; i++) {
 const manPath = path.join(dir, "manifest.json");
 if (!fs.existsSync(manPath)) { console.error(`${manPath} not found. Run record.mjs first.`); process.exit(1); }
 const man = JSON.parse(fs.readFileSync(manPath, "utf8"));
+// The recording's own frame (1920x1004 by default since the browser header ruling; 1920x1080 without a header).
+const FW = man.frame?.width ?? 1920, FH = man.frame?.height ?? 1080;
 const round2 = (x) => Math.round(x * 100) / 100;
 
 // TIMEBASE — see the law in trim.mjs. Every time in manifest.json is WALL
@@ -233,7 +235,7 @@ if (fs.existsSync(cleanPath)) {
     if (!m) return null;
     const [w, h, x, y] = m.slice(1).map(Number);
     if (!(w > 0 && h > 0)) return null;
-    const changedPx = yavg ? (parseFloat(yavg[1]) / 255) * 1920 * 1080 * SS * SS : 0;
+    const changedPx = yavg ? (parseFloat(yavg[1]) / 255) * FW * FH * SS * SS : 0;
     return { x: x / SS, y: y / SS, w: w / SS, h: h / SS, changedPx: changedPx / (SS * SS) };
   };
   for (const st of steps) {
@@ -256,7 +258,7 @@ if (fs.existsSync(cleanPath)) {
       console.log(`consequence: step ${st.n} change too sparse (${Math.round(change.changedPx)}px over ${Math.round(change.w)}x${Math.round(change.h)}) — ignored as noise`);
       continue;
     }
-    if (change.w * change.h > 1920 * 1080 * 0.85) {
+    if (change.w * change.h > FW * FH * 0.85) {
       // A navigation (the whole page swapped). The tight control shot must
       // NOT linger clamped over the new page — reset to wide, so the camera
       // "zooms back out" at the cut (founder, 2026-08-09: "you never zoomed
@@ -267,7 +269,7 @@ if (fs.existsSync(cleanPath)) {
       const wideStart = round2(st.click.t);
       const wideEnd = round2(Math.min(duration, st.t_end));
       if (wideEnd - wideStart >= 0.6) {
-        camera.push({ t_start: wideStart, t_end: wideEnd, x: 0, y: 0, w: 1920, h: 1080, n: st.n, label: `${st.label || "click"}, new page` });
+        camera.push({ t_start: wideStart, t_end: wideEnd, x: 0, y: 0, w: FW, h: FH, n: st.n, label: `${st.label || "click"}, new page` });
         camera.sort((a, b) => a.t_start - b.t_start);
       }
       console.log(`consequence: step ${st.n} navigation — reset to wide at ${wideStart}s`);
@@ -296,7 +298,7 @@ const mouseEvents = rawEvents
   .filter((e) => e.time >= 0 && e.time <= duration);
 const interactions = mouseEvents.length
   ? {
-      viewport: man.interactions?.viewport ?? { width: 1920, height: 1080 },
+      viewport: man.interactions?.viewport ?? { width: FW, height: FH },
       mouseEvents,
     }
   : null;
@@ -330,7 +332,9 @@ const wire = {
   ...(rulesVersion !== null ? { rulesVersion } : {}),
   app: man.app ?? "App",
   title: titleArg ?? man.title ?? `${man.app ?? "App"} demo`,
-  frame: { width: 1920, height: 1080 },
+  frame: { width: FW, height: FH },
+  // BROWSER HEADER (2026-09-16): true when the recording is not 16:9 and DemoBites draws the dark macOS bar on top at ingest.
+  ...(typeof man.browserHeader === "boolean" ? { browserHeader: man.browserHeader } : {}),
   duration,
   steps,
   camera,

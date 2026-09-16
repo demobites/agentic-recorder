@@ -20,6 +20,29 @@ if (!outArg || !storyArg) {
 }
 
 const STORYBOARD = JSON.parse(fs.readFileSync(storyArg, "utf8"));
+
+// BROWSER HEADER (founder ruling 2026-09-16): DemoBites draws the dark macOS
+// browser header at ingest on any recording that is not 16:9 (bar height
+// min(0.075·h, 0.0421875·w), rounded to even, stacked on top). So the default
+// viewport is 1920x1004: bar 76, a clean 1920x1080 canvas, no letterbox.
+// Precedence: --viewport=WxH (the cloud runner passes it) → storyboard.viewport
+// → a workspace rule negating the header ("No browser header on the takes.",
+// same phrase test as the cloud runner) films at 1920x1080 → default 1004.
+const NO_HEADER_RE = /no browser header|without (a |the )?browser header|browser header off/i;
+function resolveDesign() {
+  const flag = process.argv.slice(2).find((a) => a.startsWith("--viewport="));
+  const m = flag && /^--viewport=(\d{3,4})x(\d{3,4})$/.exec(flag);
+  if (m) return { width: Number(m[1]), height: Number(m[2]), why: "--viewport" };
+  const v = STORYBOARD.viewport;
+  if (v && Number.isInteger(v.width) && Number.isInteger(v.height)) return { width: v.width, height: v.height, why: "storyboard.viewport" };
+  let rulesText = "";
+  try { rulesText = JSON.parse(fs.readFileSync(path.resolve(".recorder/rules.json"), "utf8")).text ?? ""; } catch {}
+  if (NO_HEADER_RE.test(rulesText)) return { width: 1920, height: 1080, why: "workspace rule: no browser header" };
+  return { width: 1920, height: 1004, why: "default, DemoBites draws the browser header at ingest" };
+}
+const { why: DESIGN_WHY, ...DESIGN } = resolveDesign();
+const BROWSER_HEADER = Math.abs(DESIGN.width / DESIGN.height - 16 / 9) >= 0.001;
+console.log(`viewport ${DESIGN.width}x${DESIGN.height} (${DESIGN_WHY}); browser header: ${BROWSER_HEADER ? "yes" : "no"}`);
 const ACTIONS = new Set(["goto", "settle", "scroll", "click", "hover", "type", "expect"]);
 if (!Array.isArray(STORYBOARD.steps) || STORYBOARD.steps.length === 0) {
   console.error("Storyboard has no steps.");
@@ -55,7 +78,7 @@ try {
   // (rules.mjs prints it); the recipe carries it so a re-take can refuse an older rule set.
   let rulesVersion = Number.isInteger(STORYBOARD.rulesVersion) ? STORYBOARD.rulesVersion : null;
   if (rulesVersion === null) { try { const r = JSON.parse(fs.readFileSync(path.resolve(".recorder/rules.json"), "utf8")); if (Number.isInteger(r.version)) rulesVersion = r.version; } catch {} }
-  const config = { app: STORYBOARD.app ?? cfg.app ?? null, url: STORYBOARD.url ?? cfg.url ?? null, frame: cfg.frame ?? { width: 1920, height: 1080 }, base: cfg.base ?? "https://app.demobites.com", ...(rulesVersion !== null ? { rulesVersion } : {}) };
+  const config = { app: STORYBOARD.app ?? cfg.app ?? null, url: STORYBOARD.url ?? cfg.url ?? null, frame: DESIGN, browserHeader: BROWSER_HEADER, base: cfg.base ?? "https://app.demobites.com", ...(rulesVersion !== null ? { rulesVersion } : {}) };
   fs.writeFileSync(path.join(DIR, "recipe.json"), JSON.stringify({ version: 1, lane: (process.env.CDP_WS_URL || STORYBOARD.cdpWsUrl) ? "cloud" : "skill", engine: ENGINE_VERSION, config }, null, 2));
 } catch (e) { console.error("recipe.json not written:", e.message); }
 fs.mkdirSync(DIR, { recursive: true });
@@ -90,7 +113,6 @@ fs.mkdirSync(DIR, { recursive: true });
 // display-level capture: a separate chapter. The coordinate plumbing below is
 // kept so flipping this constant is the only change when it lands.
 const SUPERSAMPLE = 1;
-const DESIGN = { width: 1920, height: 1080 };
 const VIEW = { width: DESIGN.width * SUPERSAMPLE, height: DESIGN.height * SUPERSAMPLE };
 // Persistent camera-browser profile: the human's signed-in sessions live here.
 // The auth checkpoint (SKILL.md) fills it; record only ever reads it.
@@ -285,6 +307,7 @@ const manifest = {
   title: STORYBOARD.title ?? null,
   url: STORYBOARD.url ?? null,
   frame: DESIGN,
+  browserHeader: BROWSER_HEADER,
   supersample: SUPERSAMPLE,
   started_at: new Date(T0).toISOString(),
   steps: [],
