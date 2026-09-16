@@ -24,10 +24,12 @@ const STORYBOARD = JSON.parse(fs.readFileSync(storyArg, "utf8"));
 // BROWSER HEADER (founder ruling 2026-09-16): DemoBites draws the dark macOS
 // browser header at ingest on any recording that is not 16:9 (bar height
 // min(0.075·h, 0.0421875·w), rounded to even, stacked on top). So the default
-// viewport is 1920x1004: bar 76, a clean 1920x1080 canvas, no letterbox.
+// viewport is 1920x1014: the transcode pads the upload into 1920x1080 and the
+// crop reader insets a 4 px letterbox, so 1014 → crop 1006 + bar 74 = exactly
+// 1080 (1004 would end at 1070). Unit-tested app side (recorder-ingest-frame).
 // Precedence: --viewport=WxH (the cloud runner passes it) → storyboard.viewport
 // → a workspace rule negating the header ("No browser header on the takes.",
-// same phrase test as the cloud runner) films at 1920x1080 → default 1004.
+// same phrase test as the cloud runner) films at 1920x1080 → default 1014.
 const NO_HEADER_RE = /no browser header|without (a |the )?browser header|browser header off/i;
 function resolveDesign() {
   const flag = process.argv.slice(2).find((a) => a.startsWith("--viewport="));
@@ -38,7 +40,7 @@ function resolveDesign() {
   let rulesText = "";
   try { rulesText = JSON.parse(fs.readFileSync(path.resolve(".recorder/rules.json"), "utf8")).text ?? ""; } catch {}
   if (NO_HEADER_RE.test(rulesText)) return { width: 1920, height: 1080, why: "workspace rule: no browser header" };
-  return { width: 1920, height: 1004, why: "default, DemoBites draws the browser header at ingest" };
+  return { width: 1920, height: 1014, why: "default, DemoBites draws the browser header at ingest" };
 }
 const { why: DESIGN_WHY, ...DESIGN } = resolveDesign();
 const BROWSER_HEADER = Math.abs(DESIGN.width / DESIGN.height - 16 / 9) >= 0.001;

@@ -47,7 +47,7 @@ for (let i = 1; i < args.length; i++) {
 const manPath = path.join(dir, "manifest.json");
 if (!fs.existsSync(manPath)) { console.error(`${manPath} not found. Run record.mjs first.`); process.exit(1); }
 const man = JSON.parse(fs.readFileSync(manPath, "utf8"));
-// The recording's own frame (1920x1004 by default since the browser header ruling; 1920x1080 without a header).
+// The recording's own frame (1920x1014 by default since the browser header ruling; 1920x1080 without a header).
 const FW = man.frame?.width ?? 1920, FH = man.frame?.height ?? 1080;
 const round2 = (x) => Math.round(x * 100) / 100;
 
