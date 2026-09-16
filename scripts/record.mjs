@@ -27,8 +27,9 @@ const STORYBOARD = JSON.parse(fs.readFileSync(storyArg, "utf8"));
 // its 16:9 canvas. The header is on by default; a workspace rule negating it
 // ("No browser header on the takes.", same phrase test as the cloud runner)
 // turns it off, and so does storyboard.browserHeader === false. The manifest
-// and the recipe carry browserHeader for the ingest to read. --viewport=WxH
-// and storyboard.viewport still override the frame when a lane needs it.
+// and the recipe carry browserHeader for the ingest to read. The cloud runner
+// passes --browser-header=on|off; --viewport=WxH and storyboard.viewport can
+// still change the frame when a lane needs it, never by default.
 const NO_HEADER_RE = /no browser header|without (a |the )?browser header|browser header off/i;
 function resolveDesign() {
   const flag = process.argv.slice(2).find((a) => a.startsWith("--viewport="));
@@ -39,6 +40,9 @@ function resolveDesign() {
   return { width: 1920, height: 1080, why: "default" };
 }
 function resolveHeader() {
+  // --browser-header=on|off (the cloud runner passes it) → storyboard.browserHeader → the rule → on.
+  const flag = process.argv.slice(2).find((a) => a.startsWith("--browser-header="));
+  if (flag) { const v = flag.slice("--browser-header=".length).toLowerCase(); if (v === "on" || v === "off") return { on: v === "on", why: "--browser-header" }; console.error(`--browser-header must be on or off (got ${v}); ignoring it`); }
   if (typeof STORYBOARD.browserHeader === "boolean") return { on: STORYBOARD.browserHeader, why: "storyboard.browserHeader" };
   let rulesText = "";
   try { rulesText = JSON.parse(fs.readFileSync(path.resolve(".recorder/rules.json"), "utf8")).text ?? ""; } catch {}
