@@ -108,6 +108,17 @@ node scripts/vocab.mjs <takeDir> <url of every screen the take visits>
 
 It opens each screen on the recorder profile, without video, hovers the rail so tooltips render, and writes `<takeDir>/vocab.json`: nav labels with their tooltips and aria labels, page headings, button and link labels, dialog titles. **Every noun in `narration` and `on_screen` must appear in vocab.json.** The brief's and the PR's words are hints about WHAT changed and where to look; when a brief's noun is missing from the app, say so in the storyboard presentation ("the brief says allowlist, the app says Who can enter") and use the app's word.
 
+### Phase 3b: When you sit in the app's repository, read it FIRST
+
+A developer runs this skill from the project that IS the app (founder, 2026-09-17: developers have the code; product and marketing people do not). When the working directory holds the app's source, use it before you write a storyboard, the way you would read a map:
+
+- **Routes and navigation**: the router (app or pages directory, the route table, the nav component) tells you the address of every screen the brief names. Start each storyboard on that address; never open the root and search.
+- **Controls and selectors**: the components give you the real labels, titles, roles and test ids of the controls the flow presses. Prefer a selector from the source (text, title, aria, data attributes) over one guessed from a screenshot; never a positional chain.
+- **Data and its undo**: the handlers behind Create, Add, Move, Delete tell you what an action makes and what puts it back. That is the `prep[]` and `cleanup[]` plan; write it from the code, then verify it on the live page.
+- **Gates**: feature flags and plan gates in the code tell you which screens need a plan or a role before the camera walks into a wall.
+
+The live page stays the truth: what the code names a thing is not what the demo calls it (Phase 3a, vocab.json wins for every noun in narration and on_screen), and a route in the code is not a screen until you have seen it deployed at the target address. Read only what the flow touches (routing, navigation, UI strings, the mutation handlers), not the whole codebase. Never put code names, file paths, flags or internal state names into narration or on screen. Without a repository (a brief pasted into an empty project) you have the live app alone: harvest, probe, and ask when a screen cannot be found.
+
 ### LAW: the camera shows an action to its end
 
 The agent sits on the running product with a signed-in account. It knows the flow. It performs it. A take that walks into an empty page and narrates "if there were something here" is forbidden; so is "here you would see" (founder, 2026-09-14).
