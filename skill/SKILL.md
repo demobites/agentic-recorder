@@ -9,7 +9,7 @@ You are the camera operator, the director, and the editor. You film a real brows
 
 All scripts live in `scripts/` beside this file. They are plain Node ESM. Requirements: Node 18+. `npx demobite` installs Playwright, ffmpeg and ffprobe beside the skill; every script resolves the media tools through `scripts/media-tools.mjs` (a compatible system build first, then the packaged one). Never call `ffmpeg` or `ffprobe` by bare name in a new script. Run every script from the project directory so `.recorder/` lands next to the project.
 
-Follow the phases in order. Never skip the storyboard approval. Never ingest before the human's word — for DemoBites, Approve on the in-app preview page IS the word. For a batch of briefs the word was given twice already, on the batch and on each storyboard: a delivered take becomes a bite by itself (see Batch of briefs).
+Follow the phases in order. Never skip the storyboard approval: the human's yes on the storyboard, in the chat, is the word for the take. After that the take is delivered by itself. It becomes a bite in DemoBites without a second click, and the human watches it come in on their Demos grid (`<base>/demos`). Never send them to a preview page to approve it.
 
 ## Phase 0: Auth gate, ALWAYS FIRST — with the human's word
 
@@ -39,10 +39,13 @@ surprise the human with a browser page):**
      for their word.
 
 Gating first is deliberate: fail before minutes of filming and know the
-target workspace up front. Bite-plan limits are NOT your concern and never
-block you: staging always succeeds, takes wait in the product queue, and the
-plan gate lives on the Approve button in DemoBites. Never mention quota in
-the terminal — if the workspace is full, the product does the talking.
+target workspace up front. Plan limits are NOT your concern and never block
+you: staging always succeeds. When the account has no recording minutes
+left, DemoBites KEEPS the take and it waits on the Demos grid, where a strip
+shows the waiting takes with the upgrade door. `upload.mjs` prints one line
+for that ("Kept. The take is waiting for recording minutes..."); relay it
+as it is. Never add numbers, prices or quota talk of your own, the product
+does the talking.
 To sign out: `node scripts/login.mjs --logout` (revokes the key server-side
 AND strips it locally). "Log me out of DemoBites" means exactly that command.
 
@@ -300,23 +303,23 @@ Send the TRIMMED CLEAN take into DemoBites. The studio owns the look: NO backdro
 node scripts/trim.mjs <takeDir>             # raw.webm -> clean.mp4, trim from record_from ONLY
 node scripts/calibrate.mjs <takeDir>        # anchor-measure the clock against the footage
 node scripts/manifest.mjs <takeDir>         # internal manifest -> manifest.demobites.json (wire schema)
-node scripts/upload.mjs <takeDir>           # STAGE the take + open the in-app preview (refuses an uncleaned take)
+node scripts/upload.mjs <takeDir>           # STAGE + DELIVER the take, open the Demos grid (refuses an uncleaned take)
 ```
 
-**The human word lives in the product now.** `upload.mjs` stages the take (the
-ZIP for ingestion plus a playable MP4 for the player), opens the DemoBites
-preview page in the human's browser, and polls while they decide THERE.
-Approve on that page runs the ingest; Discard deletes the staged take and this
-script reports it so you adjust and refilm. There is no local review.html for
-this ending — the preview page is the review.
+**Every take is delivered by itself** (founder ruling 2026-09-25). `upload.mjs` stages the take (the ZIP for ingestion plus a playable MP4), uploads both, then calls the delivery door. There is no Approve click and no preview page to send the human to: the word was the storyboard yes in the chat. The script opens the human's Demos grid (`<base>/demos`, `--no-open` skips it) and prints one of two lines:
 
-What the human approves on that page is the **picture and the coverage**, never the script. The page deliberately shows no quoted lines and no timestamps, because the ingestion rewrites the narration and refits it to the video. Presenting "this line at 0:05" promises something the system does not deliver. A retake is only for a wrong picture: private data on screen, or a missing step in the flow.
+- **Delivered:** `Delivered. Watch it come in: <base>/demos`. The card for the take shows it ingesting on the grid. Without `--stage-only` the script then waits for the bite to finish and prints the receipt (see the law below).
+- **Kept, waiting for minutes:** `Kept. The take is waiting for recording minutes (back on <date>). Watch it here: <base>/demos`. The account has no recording minutes left. The take is safe on the server and waits on the same grid, next to the upgrade door. Tell the human exactly that, nothing more; do not refilm, do not stage it again.
+
+Any other answer is an error: the script says what failed and `node scripts/status.mjs <takeDir>` tries the delivery again (the server is idempotent). `staged.json` in the take directory records `stagingId`, `dashboardUrl`, `delivered`, `waiting`, `resetsAt` and `biteId` (plus `previewUrl`, kept only for older readers; never give it to the human). Tell the human to watch the Demos grid, never the preview link.
+
+If the take is wrong (private data on screen, a missing step in the flow), say so, adjust and film again; the human removes the unwanted bite in the app.
 
 ### LAW: never hand over a studio link before the bite is ready
 
 `ingest` only STARTS the pipeline. Transcode, rescript, fit, synthesize and finalize all happen after the call returns, so a link printed at that moment leads to a half built bite with grey silent rows, which is exactly what the founder walked into on 2026-08-08.
 
-`upload.mjs` now polls `/api/recorder/status` until the bite reaches `completed` and prints what actually landed. **Read that line before you say anything to the human.** It reports `narrationReady/narrationTotal` segments with real audio behind them, and the camera shot count. If narration is 0, or ready is below total, or shots are 0, say so plainly and investigate. Do not pass on a link with a warning above it as though it were a success.
+After a delivered take, `upload.mjs` polls `/api/recorder/status` until the bite reaches `completed` and prints what actually landed. **Read that line before you say anything to the human.** It reports `narrationReady/narrationTotal` segments with real audio behind them, and the camera shot count. If narration is 0, or ready is below total, or shots are 0, say so plainly and investigate. Do not pass on a link with a warning above it as though it were a success.
 
 ## Phase 7: Re-take (Launch plan and up)
 
@@ -339,10 +342,9 @@ Laws for a re-take:
 - **The narration in the recipe is the ORIGINAL intent.** Do not rewrite it to taste: the server replaces it
   with the bite's current text per step. Only remove lines whose beats you dropped.
 - **Same pacing laws apply** (intro, narrate the path, linger, cut and fade on page transitions).
-- **The human approves in-app.** The preview page says "Re-take of <bite>". Approve replaces the recording in
-  that bite; the previous recording is kept for rollback, never overwritten. A re-take filmed from a brief
-  (a take with an attempt) is delivered instead: the new recording replaces the current one by itself, and
-  the promoted export stays as it is until a version is published.
+- **The re-take is delivered like every take.** The new recording replaces the current one in that bite by
+  itself; the previous recording is kept for rollback, never overwritten, and the promoted export stays as it
+  is until a version is published. The human watches it on the Demos grid.
 
 ## Batch of briefs (GitHub PR → demos)
 
@@ -353,9 +355,9 @@ node scripts/briefs.mjs list <batchId> [--paste bundle.txt]        # the approve
 node scripts/briefs.mjs claim <batchId> <briefId>                   # mints an attempt, creates take-<briefId>-r<revision>/brief.json
 node scripts/briefs.mjs event <takeDir> planning|awaiting_storyboard_approval|recording|uploading|failed|cancelled [--note "..."]
 node scripts/briefs.mjs release <takeDir>                           # give the brief back (cancelled)
-node scripts/upload.mjs <takeDir> --stage-only --no-open            # deliver: the take becomes a bite by itself, do not wait
+node scripts/upload.mjs <takeDir> --stage-only --no-open            # deliver: the take becomes a bite by itself (or waits for minutes), do not wait
 node scripts/status.mjs <takeDir>                                   # later: wait for the bite to finish (retries a failed delivery)
-node scripts/status.mjs --all                                       # one look at every delivered take here
+node scripts/status.mjs --all                                       # one look at every delivered or waiting take here
 ```
 
 The procedure, in order:
@@ -364,11 +366,11 @@ The procedure, in order:
 2. Claim the briefs you are about to film, one `claim` each. A claim answers "active attempt" when another agent or an earlier run holds the brief: show the human the attempt reference and its start time, and only with their word claim again with `--force`.
 3. Run `rules.mjs <takeDir>` (Phase 1b; the claim stored the batch's rules snapshot in brief.json as the fallback) and `vocab.mjs` over the screens each brief visits, then write every storyboard (Phase 3) with the brief as the spec, the workspace rules below the laws, and vocab.json as the only dictionary: the flowIntent lines are the beats, the outcome is the last beat, the exclusions are things the camera never shows, and the take stays under the brief's `maxSeconds` (90). Send `event <takeDir> planning` when you start a storyboard and `event <takeDir> awaiting_storyboard_approval` when it is ready.
 4. **Show the storyboards together, get a word on each one.** One message can carry all of them, but every brief gets its own yes or no. Never take one yes as a yes for the batch. A brief the human declines gets `release`.
-5. Film sequentially, never in parallel: one Chrome on the profile. Per take: `event recording` → Phase 4 dry run → `cleanup.mjs --prep` when declared → Phase 5 take → `cleanup.mjs` (revert, checks.after) → trim, calibrate, manifest → `upload.mjs <takeDir> --stage-only --no-open`. Report, per take, what was created and what was reverted, with the before/after checks. `upload.mjs` reads `brief.json`, moves the attempt to uploading, stages with the attempt on the payload, and after the two uploads calls the delivery route: the take becomes a bite in DemoBites by itself, no Approve click, and the line reads `delivered: bite <id>`. It writes `staged.json` with the staging id and the bite id.
+5. Film sequentially, never in parallel: one Chrome on the profile. Per take: `event recording` → Phase 4 dry run → `cleanup.mjs --prep` when declared → Phase 5 take → `cleanup.mjs` (revert, checks.after) → trim, calibrate, manifest → `upload.mjs <takeDir> --stage-only --no-open`. Report, per take, what was created and what was reverted, with the before/after checks. `upload.mjs` reads `brief.json`, moves the attempt to uploading, stages with the attempt on the payload, and after the two uploads calls the delivery route, as for every take: the take becomes a bite in DemoBites by itself, no Approve click, and the line reads `Delivered. Watch it come in: <base>/demos`. With no recording minutes left the line reads `Kept. The take is waiting for recording minutes...`; the take waits on the grid, go on with the next brief. It writes `staged.json` with the staging id, the grid link, and the bite id or the waiting state.
 6. **A failed brief never stops the others.** On a failure send `event <takeDir> failed --note "<what happened>"`, keep the take directory for diagnosis, and continue with the next brief. Report every failure plainly at the end.
-7. When all takes are delivered, tell the human: N takes were delivered and are becoming bites in DemoBites by themselves, with the bite ids. `status.mjs --all` shows where each stands; `status.mjs <takeDir>` waits for one to finish and prints what landed (the Phase 6 receipt law holds: no studio link before the bite is completed). A take the server would not deliver (upload.mjs printed the error) waits in the review queue; `status.mjs <takeDir>` tries the delivery again, and on an older DemoBites waits for the word in the app as before. Deliver each take; never publish, never share, never send invitations.
+7. When all takes are delivered, tell the human: N takes were delivered and are becoming bites in DemoBites by themselves, with the bite ids, and they can watch them come in on the Demos grid (`<base>/demos`). Name any take that is kept, waiting for recording minutes; it waits on the same grid. `status.mjs --all` shows where each stands; `status.mjs <takeDir>` waits for one to finish and prints what landed (the Phase 6 receipt law holds: no studio link before the bite is completed). A take the server would not deliver (upload.mjs printed the error): `status.mjs <takeDir>` tries the delivery again. Deliver each take; never publish, never share, never send invitations.
 
-Resume after an interruption from what is on disk and on the server: a `take-*` directory with `brief.json` is claimed; with `raw.webm` it was filmed; with `clean.mp4` and `manifest.demobites.json` it is ready to stage; with `staged.json` it is delivered or staged (check it with `status.mjs --no-wait`). `list` shows the server's view of every attempt. Never re-claim a brief that already has your own live attempt; never re-stage one that `staged.json` says is delivered or staged unless the human asked for a new take (`upload.mjs --supersede`).
+Resume after an interruption from what is on disk and on the server: a `take-*` directory with `brief.json` is claimed; with `raw.webm` it was filmed; with `clean.mp4` and `manifest.demobites.json` it is ready to stage; with `staged.json` it is delivered, waiting for minutes, or staged (check it with `status.mjs --no-wait`). `list` shows the server's view of every attempt. Never re-claim a brief that already has your own live attempt; never re-stage one that `staged.json` says is delivered, waiting or staged unless the human asked for a new take (`upload.mjs --supersede`).
 
 ## The wire manifest (fixed contract, version 2)
 
@@ -426,11 +428,13 @@ PUT <base>/api/recorder/stage  (Authorization: Bearer <api_key>)
   -> { stagingId, uploadUrl, previewUploadUrl, videoKey, previewUrl }
 
 GET <base>/api/recorder/stage?id=<stagingId>  (Authorization: Bearer <api_key>)
-  -> { status: 'pending'|'approving'|'approved'|'delivered'|'rejected', biteId, biteUKey, biteStatus, studioUrl }
+  -> { status: 'pending'|'approving'|'approved'|'delivered'|'waiting'|'rejected', biteId, biteUKey, biteStatus, studioUrl, resetsAt? }
 
-PUT <base>/api/recorder/stage/<stagingId>/uploaded  (Authorization: Bearer <api_key>)   // DELIVERY: brief takes only, after both uploads
-  {}   // the url comes from the claim's api.uploaded ("{origin}/api/recorder/stage/{id}/uploaded"); this path is the fallback
-  -> 200 { biteId, videoId } | 202 { biteId, queued:true } | 200 { pending:true } (older server: wait for the word) | 404/409 { error }
+PUT <base>/api/recorder/stage/<stagingId>/uploaded  (Authorization: Bearer <api_key>)   // DELIVERY: EVERY take, after both uploads (1.5)
+  {}   // the url comes from the claim's api.uploaded ("{origin}/api/recorder/stage/{id}/uploaded") when there is one; this path is the fallback
+  -> 202 { delivered:true, biteId, studioUrl, dashboardUrl } (also 200 { biteId, videoId } from older servers)
+   | 403 { kept:true, waiting:'minutes', resetsAt, dashboardUrl:'/demos', stagingId }   (no recording minutes: kept, waits on the grid)
+   | 200 { pending:true } (older server: waits for the word in the app) | 404/409 { error }
   // idempotent: a repeat returns the same bite
 
 GET <base>/api/recorder/status?biteId=<id>  (Authorization: Bearer <api_key>)
@@ -444,7 +448,7 @@ The upload zip contains exactly one file: `clean.mp4` stored as `recording.mp4`.
 
 ## Standing rules
 
-- Anything the human sees (storyboard presentation, review page, questions) uses commas and periods only, no dashes, and real action words. Never orphan a single word on its own line in a heading.
+- Anything the human sees (storyboard presentation, questions, reports) uses commas and periods only, no dashes, and real action words. Never orphan a single word on its own line in a heading.
 - Never touch credentials. Never print the api_key. Config and key files are chmod 600.
-- Never INGEST without the human's explicit word. For the DemoBites ending, staging for the in-app preview is HOW the word is asked — the take becomes a bite only when the human clicks Approve on that page. For a batch of briefs the word was given on the batch and on each storyboard, and delivery ingests by itself. Never publish, never share, never send invitations.
+- Never film without the human's explicit word on the storyboard. That yes, in the chat, is the word for the take: delivery ingests by itself, and the human watches the take on the Demos grid, never on a preview page. For a batch of briefs the word is given on the batch and on each storyboard. Never publish, never share, never send invitations.
 - One take directory per take, keep failed takes for diagnosis, name them `take-<slug>`, `take-<slug>2`, and so on. A take claimed from a brief is `take-<briefId>-r<revision>`.

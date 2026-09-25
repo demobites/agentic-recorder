@@ -10,14 +10,43 @@
 // Returns { exitCode, status, biteId, studioUrl } and never throws.
 //
 // DELIVERY (1.3.0, founder ruling 2026-09-14): a take filmed from a brief
-// becomes a bite by itself once its ZIP is uploaded; no Approve click. The
-// server answers status "delivered" from then on, and the wait here is only
-// for the bite to finish. Free-prompt takes still wait for the word.
+// becomes a bite by itself once its ZIP is uploaded; no Approve click.
+// DIRECT DELIVERY (1.5.0, founder ruling 2026-09-25): EVERY take is delivered
+// that way, plain prompt takes too. The person watches it come in on the
+// Demos grid (<base>/demos), never on the preview page. A take the account
+// has no recording minutes for is KEPT by the server (403 { kept: true,
+// waiting: "minutes", resetsAt, dashboardUrl, stagingId }) and waits on the
+// same grid; the stage status reads "waiting" until minutes are back.
+
+/** Where the person watches their takes: the Demos grid. `dashboardUrl` from
+ * the server wins (relative or absolute), else <base>/demos. */
+export function gridUrl(base, dashboardUrl) {
+  try { return new URL(dashboardUrl || "/demos", base + "/").toString(); } catch { return `${base}/demos`; }
+}
+
+/** "October 1, 2026" from an ISO date, or null when there is none. */
+export function formatResetDate(resetsAt) {
+  if (!resetsAt) return null;
+  const d = new Date(resetsAt);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+
+/** The one line a person reads when a take is kept for recording minutes. */
+export function waitingLine(grid, resetsAt) {
+  const when = formatResetDate(resetsAt);
+  return `Kept. The take is waiting for recording minutes${when ? ` (back on ${when})` : ""}. Watch it here: ${grid}`;
+}
 
 /** PUT the delivery route for a staged take. `template` is the claim's
  * api.uploaded ("{origin}/api/recorder/stage/{id}/uploaded", literal {id});
  * the fallback is the same path under the configured base. Idempotent on the
- * server: a repeat returns the same bite. Never throws. */
+ * server: a repeat returns the same bite. Never throws.
+ * Returns one of:
+ *   { delivered: true, biteId, videoId, studioUrl, dashboardUrl, queued }
+ *   { delivered: false, waiting: "minutes", kept: true, resetsAt, dashboardUrl }
+ *   { delivered: false, pending: true }              (older server)
+ *   { delivered: false, error } */
 export async function deliverStaged({ base, apiKey, stagingId, template }) {
   const url = template && template.includes("{id}")
     ? template.replace("{id}", encodeURIComponent(stagingId))
@@ -28,7 +57,17 @@ export async function deliverStaged({ base, apiKey, stagingId, template }) {
   } catch (e) { return { delivered: false, httpStatus: 0, error: `DemoBites unreachable (${e.message})` }; }
   const json = await res.json().catch(() => null);
   if ((res.status === 200 || res.status === 202) && json?.biteId) {
-    return { delivered: true, biteId: json.biteId, videoId: json.videoId ?? null, queued: res.status === 202 || json.queued === true, httpStatus: res.status };
+    return {
+      delivered: true, biteId: json.biteId, videoId: json.videoId ?? null, studioUrl: json.studioUrl ?? null,
+      dashboardUrl: json.dashboardUrl ?? null, queued: res.status === 202 || json.queued === true, httpStatus: res.status,
+    };
+  }
+  // No recording minutes left: the server KEEPS the take; it waits on the grid.
+  if (res.status === 403 && json?.kept === true) {
+    return {
+      delivered: false, kept: true, waiting: json.waiting ?? "minutes", resetsAt: json.resetsAt ?? null,
+      dashboardUrl: json.dashboardUrl ?? null, httpStatus: res.status,
+    };
   }
   // An older server: { pending: true }, or no such route at all (a 404 without an error body).
   if ((res.ok && json?.pending) || (res.status === 404 && !json?.error)) return { delivered: false, pending: true, httpStatus: res.status };
@@ -42,7 +81,7 @@ export async function waitForDecision({ base, apiKey, stagingId, pageUrl, delive
   let completed = false;
   let approvedBiteId = null;
   let finalStudioUrl = null;
-  process.stdout.write(delivered ? "Waiting for the bite to finish" : "Waiting for your word in the browser");
+  process.stdout.write(delivered ? "Waiting for the bite to finish" : "Checking the take in DemoBites");
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, pollMs));
     let res;
@@ -52,6 +91,12 @@ export async function waitForDecision({ base, apiKey, stagingId, pageUrl, delive
     if (!res.ok) { process.stdout.write("."); continue; }
     const st = await res.json().catch(() => null);
     if (!st) { process.stdout.write("."); continue; }
+    if (st.status === "waiting") {
+      // Kept for recording minutes: nothing will finish until they are back.
+      process.stdout.write("\n");
+      console.log(waitingLine(pageUrl, st.resetsAt));
+      return { exitCode: 0, status: "waiting", biteId: null, studioUrl: null };
+    }
     if (st.status === "rejected") {
       process.stdout.write("\n");
       console.error("Discarded in the app. Adjust the storyboard and film again.");
@@ -77,11 +122,11 @@ export async function waitForDecision({ base, apiKey, stagingId, pageUrl, delive
   }
   if (!announced) {
     process.stdout.write("\n");
-    console.error(delivered ? `The server does not show the delivered bite yet. Look again later: ${pageUrl}` : `No decision yet. The preview stays available at:\n  ${pageUrl}`);
+    console.error(delivered ? `The server does not show the delivered bite yet. Watch it here: ${pageUrl}` : `No decision yet. The take stays on your Demos grid:\n  ${pageUrl}`);
     return { exitCode: 1, status: "pending", biteId: null, studioUrl: null };
   }
   if (!completed) {
-    console.error(`${delivered ? "Delivered" : "Approved"}, but the bite did not finish within the wait window. Do not share the link yet — poll /api/recorder/status or reload the preview page.`);
+    console.error(`${delivered ? "Delivered" : "Approved"}, but the bite did not finish within the wait window. Do not share the link yet — watch it on your Demos grid: ${pageUrl}`);
     return { exitCode: 1, status: delivered ? "delivered" : "approved", biteId: approvedBiteId, studioUrl: null };
   }
 

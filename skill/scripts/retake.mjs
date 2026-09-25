@@ -8,8 +8,8 @@
 // Usage: node retake.mjs <biteId> [--note "what changed"] [--take <dir>]
 //
 // Flow: recipe -> storyboard.json -> record -> trim -> calibrate (gate) ->
-// manifest -> upload --retake-of <biteId> (stages; the human approves in-app,
-// where the preview says "Re-take of <bite>").
+// manifest -> upload --retake-of <biteId> (stages and delivers into the bite;
+// the person watches it on the Demos grid).
 //
 // A step that no longer resolves makes record.mjs FAIL LOUDLY at that step.
 // That is the moment for the agent to look at the live page, fix the

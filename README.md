@@ -2,7 +2,7 @@
 
 **Ask your coding agent to record your product. Edit the result. Download the MP4.**
 
-Your agent drives a real browser on your machine and records the flow you describe. Connect a free DemoBites account to turn the take into an editable video, with text-to-speech, zooms, captions, and MP4 export included.
+Your agent drives a real browser on your machine, records the flow you describe, and delivers the take into your free DemoBites account as an editable video, with text-to-speech, zooms, captions, and MP4 export included.
 
 **Sign in to your app locally. You do not hand DemoBites your app password or upload your recording browser profile.**
 
@@ -28,7 +28,7 @@ Before installing:
 
 - **Node.js 18 or newer** and npm.
 - **Google Chrome**, recommended. The recorder also supports Playwright's Chromium.
-- A **free DemoBites account** for the Studio workflow below.
+- A **free DemoBites account**. The recorder works only when this project is connected to it.
 
 Run these commands from your project directory:
 
@@ -61,7 +61,7 @@ For Cursor or Codex, make the [recorder instructions](skill/SKILL.md) available 
 1. **Describe the flow.** Give your agent the app URL and what you want to demonstrate.
 2. **Approve the storyboard.** Review the steps and estimated length before filming. If your app needs a login, sign in yourself in the recorder's local browser window.
 3. **Let it record.** The agent checks the flow and films it. Recording normally runs in the background.
-4. **Review the raw take.** Open the review link printed in the terminal. Check the footage, then approve it to create a Bite, an editable video project.
+4. **Watch it arrive.** The take is delivered by itself and becomes a Bite, an editable video project. The terminal prints a link to your Demos grid in DemoBites, where the take's card shows it coming in. If your account is out of recording minutes, the take is kept and waits on the same grid until minutes are back.
 5. **Tweak and download.** In the Studio, change a sentence, generate its voice, adjust the zooms or timing, and export your MP4.
 
 The storyboard's narration is a starting point. DemoBites rewrites and fits it to the footage; you can edit the final wording in the Studio.
@@ -103,24 +103,18 @@ The recorder uses a separate, persistent Chrome profile at `.recorder/profile/`.
 | --- | --- |
 | Your app's browser session | Stays in the local recording profile; the standard local workflow does not upload that profile to DemoBites. |
 | DemoBites recorder key | Saved in `.recorder/config.json` and used to authenticate recorder requests to DemoBites. This is separate from your app login. |
-| Footage and recording metadata | Uploaded to DemoBites for review and processing, including the storyboard, narration intent, cursor events, and camera targets. |
+| Footage and recording metadata | Uploaded to DemoBites for processing, including the storyboard, narration intent, cursor events, and camera targets. |
 
 Recording happens locally. Studio processing and editing use DemoBites online. Anything visible or typed into the recorded flow can appear in the footage or recording metadata, so use suitable demo data. Your coding agent's own data handling still follows its provider and your settings.
 
 Keep `.recorder/` and take directories out of version control. To disconnect the recorder, run `npx demobite logout`.
-
-## Local output without a DemoBites account
-
-The repository also contains a [standalone recorder skill](recorder/SKILL.md) and local finishing scripts. These produce a local MP4; optional voiceover uses your own ElevenLabs key.
-
-This is an advanced, manual workflow. The default `npx demobite@latest` command installs the Studio-connected skill, not the standalone skill. The standalone finishing reference contains legacy instructions; use the standalone skill as the entry point rather than treating it as a second ending of the installed Studio skill.
 
 ## A few boundaries
 
 - The agentic recorder films **browser workflows**. It does not record native desktop apps or phone screens.
 - The Studio-connected skill is designed for short demos, usually **30–45 seconds**, with a **90-second maximum per Bite**. Split longer stories into separate videos.
 - Some sites block automated browsers. The workflow may need a human sign-in or verification step, and some sites may refuse recording.
-- Filming does not publish anything. You review the take before creating the Bite; public publishing is a separate action.
+- Filming does not publish anything. You approve the storyboard before anything is filmed; the delivered Bite stays in your workspace, and public publishing is a separate action.
 
 ## Optional: Retake and management
 
@@ -134,7 +128,7 @@ npx demobite retake <biteId> --note "Export moved to the header"
 
 **Workspace rules.** A workspace admin can write standing rules for the recorder in plain words in the DemoBites settings tab Agentic Recorder Rules, one per line: what to mask, which pages never to open, which words to use. The agent reads them at the start of every take and applies them under its own filming laws; `npx demobite rules` prints them. Every take records the rules version it was filmed under.
 
-**Batches of briefs.** When a pull request in DemoBites produces approved briefs, your agent claims them, films one take per brief after you approve each storyboard, and delivers each take. A delivered take becomes a Bite in DemoBites by itself; there is no second review click for these takes. Nothing is published or shared.
+**Batches of briefs.** When a pull request in DemoBites produces approved briefs, your agent claims them, films one take per brief after you approve each storyboard, and delivers each take. Like every take, a delivered take becomes a Bite in DemoBites by itself and shows up on your Demos grid. Nothing is published or shared.
 
 The package also includes a DemoBites management MCP for releases and centers:
 
@@ -153,7 +147,6 @@ The default installer also attempts to register that MCP with Claude Code when t
 | `launcher/` | CLI setup, connection commands, and MCP registration. |
 | `skill/` | Studio-connected recorder instructions, login, upload, and Retake. |
 | `scripts/` | Shared browser recording, trimming, and timing calibration. |
-| `recorder/` | Standalone skill and local video finishing tools. |
 
 The same package is published under three names, `demobite`, `agentic-recorder` and `demobites`, always at the same version; `npx agentic-recorder@latest` and `npx demobites@latest` do exactly what `npx demobite@latest` does. Run it again to update the installed skill. For publishing instructions, see [RELEASING.md](RELEASING.md).
 
