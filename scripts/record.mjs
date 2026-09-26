@@ -125,7 +125,11 @@ const SUPERSAMPLE = 1;
 const VIEW = { width: DESIGN.width * SUPERSAMPLE, height: DESIGN.height * SUPERSAMPLE };
 // Persistent camera-browser profile: the human's signed-in sessions live here.
 // The auth checkpoint (SKILL.md) fills it; record only ever reads it.
-const profileDir = path.resolve(".recorder", "profile");
+// PARALLEL TAKES (1.7.0, founder ruling 2026-09-26): a batch films several
+// takes at once, each in its OWN profile directory seeded from this one, so
+// no two Chromes fight over one profile lock. batch.mjs passes the directory
+// in RECORDER_PROFILE; a single take never sets it and films on the profile.
+const profileDir = path.resolve(process.env.RECORDER_PROFILE || path.join(".recorder", "profile"));
 fs.mkdirSync(profileDir, { recursive: true });
 
 // LAW (the video is the metronome, founder 2026-08-08): shots are as long as

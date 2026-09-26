@@ -24,7 +24,8 @@ if (!dir || urls.length === 0) {
   process.exit(2);
 }
 fs.mkdirSync(dir, { recursive: true });
-const profileDir = path.resolve(".recorder", "profile");
+// RECORDER_PROFILE (1.7.0): a batch's parallel legs harvest on their own seeded profile.
+const profileDir = path.resolve(process.env.RECORDER_PROFILE || path.join(".recorder", "profile"));
 const headless = !args.includes("--headless=false");
 
 const ctx = await chromium.launchPersistentContext(profileDir, { channel: "chrome", headless, viewport: { width: 1920, height: 1080 } }).catch(async () =>
