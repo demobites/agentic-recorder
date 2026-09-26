@@ -123,10 +123,12 @@ function printRadar(data, slug) {
   const { batch, briefs, radar } = data;
   const order = [...briefs].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   console.log(`Update Radar: ${radar?.name ?? slug}`);
-  console.log(`Batch ${batch?.id ?? "?"}  target ${batch?.target?.url ?? "?"}${batch?.target?.environment ? ` (${batch.target.environment})` : ""}`);
+  // A radar batch has no target address: the agent films where the code
+  // already runs (the Record stage says so); print the target only when set.
+  console.log(`Batch ${batch?.id ?? "?"}${batch?.target?.url ? `  target ${batch.target.url}${batch.target.environment ? ` (${batch.target.environment})` : ""}` : ""}`);
   console.log(`${briefs.length} brief${briefs.length === 1 ? "" : "s"}, each at most ${batch?.rules?.maxSeconds ?? 90} seconds, filmed in this order:\n`);
   order.forEach((b, i) => {
-    const pos = String(b.position ?? i + 1).padStart(2, " ");
+    const pos = String(i + 1).padStart(2, " ");
     const secs = b.estimatedDurationSec ? `about ${b.estimatedDurationSec}s` : "length open";
     const state = b.status && b.status !== "approved" ? `  [${b.status}${b.attempt ? `, attempt ${b.attempt.ref}` : ""}]` : "";
     console.log(`  ${pos}. ${b.title}  (${secs})  brief ${b.briefId} r${b.revision}${state}`);
