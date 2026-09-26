@@ -136,7 +136,7 @@ npx demobite retake <biteId> --note "Export moved to the header"
 npx demobite record <code>
 ```
 
-It lists the batch and its briefs in order, saves them under `.recorder/radar/<code>/`, and tells your agent what to do next: claim each brief, show you its storyboard, film after your yes, deliver the take. One storyboard approval per brief. The workflow page shows each demo arriving; publishing stays a separate step there.
+It lists the batch and its briefs in order, saves them under `.recorder/radar/<code>/`, and tells your agent what to do next, in four steps: it walks every brief against your repository and your running app and posts the refined briefs back (the Radar page marks them "Refined on your machine"), asks you every open question once in one message, shows you all the refined storyboards together for one yes, then films them in the background, in parallel (two or three at a time, each in its own browser profile), delivering each take as it lands. A failed take never stops the others. The workflow page shows each demo arriving; publishing stays a separate step there.
 
 The package also includes a DemoBites management MCP for releases and centers:
 

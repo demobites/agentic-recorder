@@ -6,6 +6,7 @@
 //   npx demobite@latest mcp        register the DemoBites management MCP
 //   npx demobite@latest logout     disconnect (revokes the key server-side)
 //   npx demobite record <code>     UPDATE RADAR (1.6.0): list a workflow's approved briefs for the agent
+//                                  (1.7.0: the agent then refines, asks once, gets one yes, films in parallel)
 //
 // One front door (founder 2026-08-31): the user never chooses between the
 // recorder skill and the management MCP — bare `npx demobite` sets up both.
@@ -64,7 +65,7 @@ if (arg === "record") {
   // An older installed skill does not know the record code. Refresh the
   // skill's files from this package (the same copy bare `npx demobite`
   // does; no npm install, so nothing slow happens here).
-  if (!fs.readFileSync(briefsScript, "utf8").includes("--slug")) {
+  if (!fs.readFileSync(briefsScript, "utf8").includes("--slug") || !fs.existsSync(path.join(dest, "scripts", "batch.mjs"))) {
     const copy = (from, to) => fs.copyFileSync(path.join(pkgRoot, from), path.join(dest, to));
     fs.mkdirSync(path.join(dest, "scripts"), { recursive: true });
     copy("skill/SKILL.md", "SKILL.md");
@@ -84,11 +85,16 @@ if (arg === "record") {
   });
   if (r.status !== 0) process.exit(r.status ?? 1);
   console.log(`
-Follow the agentic-recorder skill (${path.join(dest, "SKILL.md").replace(os.homedir(), "~")}, section "Record a batch by slug"):
-claim each brief (\`node scripts/briefs.mjs claim <batchId> <briefId>\`), storyboard, film, upload.
-One storyboard approval per brief. Film the briefs in the order above, one at a time.
-The bundle is in .recorder/radar/${slug}/bundle.json. When every take is delivered, report the
-workflow page link printed above; the person watches the demos arrive there.
+Follow the agentic-recorder skill (${path.join(dest, "SKILL.md").replace(os.homedir(), "~")}, section "Record a batch by slug"), in four steps:
+  1. List: the batch above; the bundle is in .recorder/radar/${slug}/ (one draft per brief in briefs/).
+  2. Refactor + questions: walk EVERY brief against the repository and the running app before anything films;
+     post each refined brief back (\`node scripts/briefs.mjs refine ${slug} <briefId>\`); ask every open
+     question in ONE message, then write the storyboards to .recorder/radar/${slug}/storyboards/<briefId>.json.
+  3. One approval: show the refined storyboards together and ask one yes for the batch ("Film these N?").
+  4. Film in the background: \`node scripts/batch.mjs run ${slug}\` films them in parallel, each on its own
+     profile, and delivers each take as it lands; relay its progress lines.
+When the run ends, report per brief and end with the workflow page link printed above; the person watches
+the demos arrive there.
 `);
   process.exit(0);
 }
