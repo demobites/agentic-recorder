@@ -352,7 +352,7 @@ The human pastes a bundle of approved briefs into the chat: a header (batchId, w
 
 ```bash
 node scripts/briefs.mjs list <batchId> [--paste bundle.txt]        # the approved briefs; warns when the paste drifted
-node scripts/briefs.mjs list --slug <slug>                          # Update Radar: the batch behind a record code (see the section below)
+node scripts/briefs.mjs list --slug <slug>                          # Update Radar: the batch behind a record code, filmed in four phases (see the section below)
 node scripts/briefs.mjs claim <batchId> <briefId>                   # mints an attempt, creates take-<briefId>-r<revision>/brief.json
 node scripts/briefs.mjs event <takeDir> planning|awaiting_storyboard_approval|recording|uploading|failed|cancelled [--note "..."]
 node scripts/briefs.mjs release <takeDir>                           # give the brief back (cancelled)
@@ -375,27 +375,63 @@ Resume after an interruption from what is on disk and on the server: a `take-*` 
 
 ## Record a batch by slug (Update Radar)
 
-An Update Radar workflow (a scan of merged pull requests → topics → briefs) ends its Briefs stage with a short record code and the command `npx demobite record <slug>` on its page ("Go to your terminal or your coding agent where you installed it and run this command"). The human either ran the command themselves and pasted its output to you, or asked you to run it. Either way the batch is the same batch of briefs as above, reached by its code instead of its id, and every law of the batch section holds: Phase 0 first, one storyboard approval per brief, sequential takes, a failed brief never stops the others.
+An Update Radar workflow (a scan of merged pull requests → topics → briefs) ends its Briefs stage with a short record code and the command `npx demobite record <slug>` on its page ("Go to your terminal or your coding agent where you installed it and run this command"). The human either ran the command themselves and pasted its output to you, or asked you to run it. Either way the batch is a batch of briefs as above, reached by its code instead of its id. Phase 0 (the auth gate, with the human's word) and Phase 1b (the workspace rules) come first, as for every run. Plan limits are not your concern. Delivery is one door.
+
+**We will be judged by the outcome: the fewest edits before Export and Go live** (founder ruling, 2026-09-26). The cloud draft is a starting point, never final. The run has four steps (List → Refactor + questions → One approval → Film in the background), in this order, and no other question is asked once filming starts. The Phase numbers named inside them are the skill's phases above.
 
 ```bash
-npx demobite record <slug>                    # what the human runs: lists the batch, writes .recorder/radar/<slug>/bundle.json
-node scripts/briefs.mjs list --slug <slug>    # the same call from the skill: GET <base>/api/recorder/briefs?slug=<slug>
+npx demobite record <slug>                                        # what the human runs: lists the batch, writes .recorder/radar/<slug>/
+node scripts/briefs.mjs list --slug <slug>                        # the same call from the skill: GET <base>/api/recorder/briefs?slug=<slug>
+node scripts/briefs.mjs refine <slug> <briefId> [--note "..."]    # phase 2: post the brief you refined (.recorder/radar/<slug>/refined/<briefId>.json)
+node scripts/batch.mjs plan <slug>                                # phase 3: the pool for this machine and which briefs have a storyboard
+node scripts/batch.mjs run <slug> [--concurrency N]               # phase 4: film every approved storyboard in the background, deliver each as it lands
 ```
 
-The answer is the batch payload plus `radar: { slug, name, workflowUrl }`. The command prints the workflow's name, the batch id, and the briefs in their order (position, title, estimated seconds), then writes the bundle. Its answers when something is off, and what you do:
+The answer to `list --slug` is the batch payload plus `radar: { slug, name, workflowUrl }`. The command prints the workflow's name, the batch id, the briefs in their order (position, title, estimated seconds), every open question the drafts carry, then writes `.recorder/radar/<slug>/bundle.json` and one draft per brief in `.recorder/radar/<slug>/briefs/<briefId>.json`. Its answers when something is off, and what you do:
 
 - "Not connected to DemoBites" → Phase 0, with the human's word; never open the browser by yourself.
 - "No batch with that code" → the code is wrong; ask the human to check the command on the Update Radar page.
 - "The briefs are not approved yet" → the human approves them on the Update Radar page; wait for their word, then list again.
 - "The recorder key was refused" → the key is stale or belongs to another workspace; Phase 0 again, with their word.
 
-The procedure, in order:
+### 1. List
 
-1. `list --slug <slug>` (or read the bundle the human's run wrote). Work from the server's briefs. The batch id on the first lines is the `<batchId>` every other command takes.
-2. Take the briefs **in the printed order**, one at a time: `claim <batchId> <briefId>`, rules and vocabulary (Phase 1b, 3a, 3b), storyboard, **the human's yes on that storyboard**, dry run, take, cleanup, trim, calibrate, manifest, `upload.mjs <takeDir> --stage-only --no-open`. One storyboard approval per brief, never one word for the batch. A brief the human declines gets `release`; a brief that fails gets `event failed --note` and you go on to the next.
-3. When every brief is delivered, released or failed, report per brief what happened, name any take kept waiting for recording minutes, and end with the Update Radar link, `radar.workflowUrl` from the bundle: the workflow page shows each take arriving and the demos it becomes. The human publishes from there; you never publish.
+`list --slug <slug>` (or read the bundle the human's run wrote). Work from the server's briefs. The batch id on the first lines is the `<batchId>` every other command takes. Run `rules.mjs` now (Phase 1b). Nothing is claimed yet, nothing films.
 
-Resume like a batch: what is on disk (`take-*` directories) and what `list --slug` reports is the truth, never a second claim on your own live attempt.
+### 2. Refactor every brief, then ask every question once
+
+**The refactor pass, before any filming.** Walk EVERY brief in the batch against the repository (Phase 3b: routes, navigation, controls, the handlers behind each action, the gates) and the running app (Phase 3a: `vocab.mjs` over every screen the brief names). For each brief:
+
+- Confirm the flow exists at the target address. A flow that is not there is said so, not filmed.
+- Replace guessed screens and labels with the real ones, the app's current words (vocab.json is the dictionary).
+- Drop the steps that are not there. Add nothing the brief did not ask for.
+- Tighten `flowIntent` and the narration intent to what is on screen; the outcome stays the last beat; the exclusions stay things the camera never shows; the take stays under `maxSeconds` (90).
+
+Write the refined brief to `.recorder/radar/<slug>/refined/<briefId>.json` (copy the draft from `briefs/<briefId>.json` and edit it; same fields) and post it back: `node scripts/briefs.mjs refine <slug> <briefId> --note "<what you changed and why>"`. The server mints a new revision and the Radar page shows that brief as "Refined on your machine", so the human sees what will be filmed before it is filmed. The command rewrites the bundle with the new revisions; the claim in step 4 takes them. A brief that needs no change is not posted. An older DemoBites without the refine route answers so; then film from your refined file and say that the page still shows the cloud draft.
+
+**Questions once, for the whole batch.** While you walk the briefs, collect every open question: the drafts' `questions[]` (printed by `list`), the account or login the flows need, test data that must exist, feature flags, the URL and environment to film on, and anything else you cannot decide from the code and the app. Ask them in ONE message, numbered, brief by brief, and wait for the answers. Never a question mid-filming: a take that would need one is not ready to film, and it is said so in this message. When there is nothing to ask, say that in one line and go on.
+
+Then write every storyboard (Phase 3, the refined brief as the spec, the workspace rules below the laws, vocab.json as the only dictionary) into `.recorder/radar/<slug>/storyboards/<briefId>.json`, and run the headless dry run (Phase 4) for each of them on your own, before the human sees anything. A brief you could not refine into a filmable storyboard is reported with the reason and left without a storyboard; `batch.mjs` skips it and says so.
+
+### 3. One approval for the batch
+
+Show the refined storyboards for ALL briefs together, each as a numbered shot list with its three blocks (the shot list with "pointed at, not pressed" beats, "Before the camera", "After the cut"), its estimated length, the rules applied, and what changed against the cloud draft in one line per brief. Then ask for one yes for the batch: "Film these 3?". **One word for the batch replaces one approval per brief** (founder ruling, 2026-09-26). The human may strike a brief from the batch in their answer ("film 1 and 3"); that brief gets no storyboard in `storyboards/` (or `--only <briefId,...>` on the run). A no on the batch means back to step 2, not filming a subset. `node scripts/batch.mjs plan <slug>` shows what the run will do: the pool size for this machine and which briefs have a storyboard.
+
+### 4. Film in the background, in parallel
+
+On the yes: `node scripts/batch.mjs run <slug>` (run it in the background so you keep answering). It launches the takes together in a small pool sized to the machine and delivers each one as it finishes:
+
+- **The pool rule:** 2 takes at a time on a machine with 8 CPU cores or fewer, or 16 GB of memory or less; 3 above that; `--concurrency N` overrides; never more than 4. The rest queue.
+- **One browser profile per take.** Each take films on its own profile directory seeded from `.recorder/profile` (the signed-in session rides along, the profile lock does not), passed to `record.mjs` and `cleanup.mjs` as `RECORDER_PROFILE`, and removed after the take. Never share one Chrome profile between two takes.
+- **Per take, in order, as child processes of the same scripts a single take uses:** `briefs.mjs claim` → `event recording` → `cleanup.mjs --prep` (when declared) → `record.mjs` → `cleanup.mjs` (revert, checks.after, when declared) → `trim.mjs` → `calibrate.mjs` → `manifest.mjs` → `upload.mjs --stage-only --no-open`, the one delivery door: the take becomes a bite by itself, or is kept waiting for recording minutes.
+- **A failed take never stops the others.** The attempt gets `event failed --note "<step>: <why>"`, the take directory stays for diagnosis, the pool goes on. Logs live in `.recorder/radar/<slug>/takes/<briefId>/<step>.log` (and `take.log`, every step in order); `takes/summary.json` is the batch's outcome.
+- **Progress lines.** The script prints one line per event (claimed, filming, filmed, cleaned, delivered with the bite id, kept, failed with the step and the log). Relay them to the human as they land, in the same words. At the end it prints the summary per brief, the Demos grid, and the Radar `workflowUrl`.
+
+When the run ends, report per brief what happened, name any take kept waiting for recording minutes (it waits on the Demos grid), name any failed take with its step and what you will change before filming it again (a failed take is filmed again alone with `--only <briefId>`, after the fix, with the human's word), and end with the Update Radar link, `radar.workflowUrl` from the bundle: the workflow page shows each take arriving and the demos it becomes. The human publishes from there; you never publish. `status.mjs --all` shows where each delivered take stands; `status.mjs <takeDir>` waits for one to finish and prints what landed (the Phase 6 receipt law holds: no studio link before the bite is completed).
+
+**One demo, not a batch.** Someone who asks for a single demo from a Radar brief, or a single re-film, gets the single-take path: `claim`, storyboard, the yes on it, `record.mjs` on the profile, cleanup, trim, calibrate, manifest, `upload.mjs`. `batch.mjs` is for the batch.
+
+Resume like a batch: what is on disk (`take-*` directories, `takes/<briefId>/result.json`) and what `list --slug` reports is the truth, never a second claim on your own live attempt. `batch.mjs run` again films only the briefs whose storyboards are present; pass `--only` for the ones to film again.
 
 ## The wire manifest (fixed contract, version 2)
 
@@ -448,6 +484,10 @@ GET <base>/api/recorder/briefs?batch=<batchId>  (Authorization: Bearer <api_key>
 GET <base>/api/recorder/briefs?slug=<slug>      (Authorization: Bearer <api_key>)   // UPDATE RADAR (1.6): same payload + radar { slug, name, workflowUrl }
   -> { batch, api, workspaceRules, briefs, radar? }   (404 unknown_slug; 409 not_approved; 403 workspace_mismatch)
 
+PUT <base>/api/recorder/briefs/<briefId>/refine  (Authorization: Bearer <api_key>)   // REFACTOR PASS (1.7): the brief refined on this machine
+  { revision, contentHash, content, note? }        // content = the brief's fields (title, audience, outcome, flowIntent, exclusions, ...)
+  -> { revision, contentHash }                     // the new revision; the Radar page shows "Refined on your machine" (409 hash_mismatch; 410 superseded)
+
 GET <base>/api/recorder/recipe?biteId=<id>  (Authorization: Bearer <api_key>)   // RE-TAKE: the bite's recipe
   -> { storyboard, config:{app,url,frame}, manifest, engine }   (404 no recipe; 402/403 plan gate)
 
@@ -479,5 +519,5 @@ The upload zip contains exactly one file: `clean.mp4` stored as `recording.mp4`.
 
 - Anything the human sees (storyboard presentation, questions, reports) uses commas and periods only, no dashes, and real action words. Never orphan a single word on its own line in a heading.
 - Never touch credentials. Never print the api_key. Config and key files are chmod 600.
-- Never film without the human's explicit word on the storyboard. That yes, in the chat, is the word for the take: delivery ingests by itself, and the human watches the take on the Demos grid, never on a preview page. For a batch of briefs the word is given on the batch and on each storyboard. Never publish, never share, never send invitations.
+- Never film without the human's explicit word on the storyboard. That yes, in the chat, is the word for the take: delivery ingests by itself, and the human watches the take on the Demos grid, never on a preview page. For a pasted batch of briefs the word is given on each storyboard; for an Update Radar batch reached by its record code the word is ONE yes on the refined storyboards shown together (founder ruling 2026-09-26), after every question was asked once. Never publish, never share, never send invitations.
 - One take directory per take, keep failed takes for diagnosis, name them `take-<slug>`, `take-<slug>2`, and so on. A take claimed from a brief is `take-<briefId>-r<revision>`.
