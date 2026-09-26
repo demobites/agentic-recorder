@@ -352,6 +352,7 @@ The human pastes a bundle of approved briefs into the chat: a header (batchId, w
 
 ```bash
 node scripts/briefs.mjs list <batchId> [--paste bundle.txt]        # the approved briefs; warns when the paste drifted
+node scripts/briefs.mjs list --slug <slug>                          # Update Radar: the batch behind a record code (see the section below)
 node scripts/briefs.mjs claim <batchId> <briefId>                   # mints an attempt, creates take-<briefId>-r<revision>/brief.json
 node scripts/briefs.mjs event <takeDir> planning|awaiting_storyboard_approval|recording|uploading|failed|cancelled [--note "..."]
 node scripts/briefs.mjs release <takeDir>                           # give the brief back (cancelled)
@@ -371,6 +372,30 @@ The procedure, in order:
 7. When all takes are delivered, tell the human: N takes were delivered and are becoming bites in DemoBites by themselves, with the bite ids, and they can watch them come in on the Demos grid (`<base>/demos`). Name any take that is kept, waiting for recording minutes; it waits on the same grid. `status.mjs --all` shows where each stands; `status.mjs <takeDir>` waits for one to finish and prints what landed (the Phase 6 receipt law holds: no studio link before the bite is completed). A take the server would not deliver (upload.mjs printed the error): `status.mjs <takeDir>` tries the delivery again. Deliver each take; never publish, never share, never send invitations.
 
 Resume after an interruption from what is on disk and on the server: a `take-*` directory with `brief.json` is claimed; with `raw.webm` it was filmed; with `clean.mp4` and `manifest.demobites.json` it is ready to stage; with `staged.json` it is delivered, waiting for minutes, or staged (check it with `status.mjs --no-wait`). `list` shows the server's view of every attempt. Never re-claim a brief that already has your own live attempt; never re-stage one that `staged.json` says is delivered, waiting or staged unless the human asked for a new take (`upload.mjs --supersede`).
+
+## Record a batch by slug (Update Radar)
+
+An Update Radar workflow (a scan of merged pull requests → topics → briefs) ends its Briefs stage with a short record code and the command `npx demobite record <slug>` on its page ("Go to your terminal or your coding agent where you installed it and run this command"). The human either ran the command themselves and pasted its output to you, or asked you to run it. Either way the batch is the same batch of briefs as above, reached by its code instead of its id, and every law of the batch section holds: Phase 0 first, one storyboard approval per brief, sequential takes, a failed brief never stops the others.
+
+```bash
+npx demobite record <slug>                    # what the human runs: lists the batch, writes .recorder/radar/<slug>/bundle.json
+node scripts/briefs.mjs list --slug <slug>    # the same call from the skill: GET <base>/api/recorder/briefs?slug=<slug>
+```
+
+The answer is the batch payload plus `radar: { slug, name, workflowUrl }`. The command prints the workflow's name, the batch id, and the briefs in their order (position, title, estimated seconds), then writes the bundle. Its answers when something is off, and what you do:
+
+- "Not connected to DemoBites" → Phase 0, with the human's word; never open the browser by yourself.
+- "No batch with that code" → the code is wrong; ask the human to check the command on the Update Radar page.
+- "The briefs are not approved yet" → the human approves them on the Update Radar page; wait for their word, then list again.
+- "The recorder key was refused" → the key is stale or belongs to another workspace; Phase 0 again, with their word.
+
+The procedure, in order:
+
+1. `list --slug <slug>` (or read the bundle the human's run wrote). Work from the server's briefs. The batch id on the first lines is the `<batchId>` every other command takes.
+2. Take the briefs **in the printed order**, one at a time: `claim <batchId> <briefId>`, rules and vocabulary (Phase 1b, 3a, 3b), storyboard, **the human's yes on that storyboard**, dry run, take, cleanup, trim, calibrate, manifest, `upload.mjs <takeDir> --stage-only --no-open`. One storyboard approval per brief, never one word for the batch. A brief the human declines gets `release`; a brief that fails gets `event failed --note` and you go on to the next.
+3. When every brief is delivered, released or failed, report per brief what happened, name any take kept waiting for recording minutes, and end with the Update Radar link, `radar.workflowUrl` from the bundle: the workflow page shows each take arriving and the demos it becomes. The human publishes from there; you never publish.
+
+Resume like a batch: what is on disk (`take-*` directories) and what `list --slug` reports is the truth, never a second claim on your own live attempt.
 
 ## The wire manifest (fixed contract, version 2)
 
@@ -418,6 +443,10 @@ DELETE <base>/api/recorder/key  (Authorization: Bearer <api_key>)
 
 GET <base>/api/recorder/rules  (Authorization: Bearer <api_key>)   // WORKSPACE RULES (1.4): never cached
   -> { workspaceId, rules: string | null, version, updatedAt }   (the claim's api.rules is the same url; workspaceRules on the claim is the snapshot)
+
+GET <base>/api/recorder/briefs?batch=<batchId>  (Authorization: Bearer <api_key>)   // BATCH OF BRIEFS: the approved briefs, their attempts, the delivery door
+GET <base>/api/recorder/briefs?slug=<slug>      (Authorization: Bearer <api_key>)   // UPDATE RADAR (1.6): same payload + radar { slug, name, workflowUrl }
+  -> { batch, api, workspaceRules, briefs, radar? }   (404 unknown_slug; 409 not_approved; 403 workspace_mismatch)
 
 GET <base>/api/recorder/recipe?biteId=<id>  (Authorization: Bearer <api_key>)   // RE-TAKE: the bite's recipe
   -> { storyboard, config:{app,url,frame}, manifest, engine }   (404 no recipe; 402/403 plan gate)

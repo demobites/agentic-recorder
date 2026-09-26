@@ -130,6 +130,14 @@ npx demobite retake <biteId> --note "Export moved to the header"
 
 **Batches of briefs.** When a pull request in DemoBites produces approved briefs, your agent claims them, films one take per brief after you approve each storyboard, and delivers each take. Like every take, a delivered take becomes a Bite in DemoBites by itself and shows up on your Demos grid. Nothing is published or shared.
 
+**Update Radar.** A workflow on the Update Radar page (a scan of your merged pull requests, sorted into topics, written into briefs) shows a short record code once its briefs are approved. Run the command from the project where the recorder is installed, in your terminal or in your coding agent:
+
+```bash
+npx demobite record <code>
+```
+
+It lists the batch and its briefs in order, saves them under `.recorder/radar/<code>/`, and tells your agent what to do next: claim each brief, show you its storyboard, film after your yes, deliver the take. One storyboard approval per brief. The workflow page shows each demo arriving; publishing stays a separate step there.
+
 The package also includes a DemoBites management MCP for releases and centers:
 
 ```bash

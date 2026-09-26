@@ -5,6 +5,7 @@
 //   npx demobite@latest login      connect this machine to DemoBites
 //   npx demobite@latest mcp        register the DemoBites management MCP
 //   npx demobite@latest logout     disconnect (revokes the key server-side)
+//   npx demobite record <code>     UPDATE RADAR (1.6.0): list a workflow's approved briefs for the agent
 //
 // One front door (founder 2026-08-31): the user never chooses between the
 // recorder skill and the management MCP — bare `npx demobite` sets up both.
@@ -29,7 +30,68 @@ const arg = process.argv[2] ?? "";
 const ok = (m) => console.log(`  ✓ ${m}`);
 const warn = (m) => console.log(`  ! ${m}`);
 
+// The skill's home and the project's key. The key lives in <cwd>/.recorder/config.json
+// (login.mjs writes it there), so everything here is per-project.
+const skillsDir = path.join(os.homedir(), ".claude", "skills");
+const dest = path.join(skillsDir, "agentic-recorder");
+const readCfg = () => {
+  try { return JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "config.json"), "utf8")); }
+  catch { return null; }
+};
+
 console.log(`\ndemobite v${pkg.version} — the DemoBites agentic recorder\n`);
+
+// ── 0. record <code> (UPDATE RADAR, 1.6.0) ─────────────────────────────────
+// The Update Radar page shows `npx demobite record <code>` next to a workflow
+// whose briefs are approved. The person runs it in the terminal or in the
+// coding agent where the recorder is installed. It runs NO setup: it checks
+// the skill is installed, respects the auth gate (a missing key prints the
+// login line and stops, nothing opens by itself), asks the server for the
+// batch behind the code, writes .recorder/radar/<code>/bundle.json, prints
+// the briefs in order and then the instruction for the agent. The text is
+// addressed to the agent, plain, and never contains the api key.
+if (arg === "record") {
+  const slug = String(process.argv[3] ?? "").trim().toLowerCase();
+  if (!slug || !/^[a-z0-9-]{1,32}$/.test(slug)) {
+    console.log("Usage: npx demobite record <code>\nThe code is the short one on the Update Radar page, like k3fx9q.");
+    process.exit(2);
+  }
+  const briefsScript = path.join(dest, "scripts", "briefs.mjs");
+  if (!fs.existsSync(path.join(dest, "SKILL.md")) || !fs.existsSync(briefsScript)) {
+    console.log("The agentic-recorder skill is not installed on this machine.\nRun `npx demobite` first (it installs the skill and the recorder), then run this command again.");
+    process.exit(1);
+  }
+  // An older installed skill does not know the record code. Refresh the
+  // skill's files from this package (the same copy bare `npx demobite`
+  // does; no npm install, so nothing slow happens here).
+  if (!fs.readFileSync(briefsScript, "utf8").includes("--slug")) {
+    const copy = (from, to) => fs.copyFileSync(path.join(pkgRoot, from), path.join(dest, to));
+    fs.mkdirSync(path.join(dest, "scripts"), { recursive: true });
+    copy("skill/SKILL.md", "SKILL.md");
+    for (const f of fs.readdirSync(path.join(pkgRoot, "skill/scripts"))) copy(`skill/scripts/${f}`, `scripts/${f}`);
+    for (const f of fs.readdirSync(path.join(pkgRoot, "scripts"))) copy(`scripts/${f}`, `scripts/${f}`);
+    ok(`Skill files refreshed to v${pkg.version} → ${dest}`);
+  }
+  const cfg = readCfg();
+  if (!cfg?.api_key) {
+    console.log("This project is not connected to DemoBites yet.\nRun `npx demobite login` (it prints a link to approve in your browser), then run this command again.");
+    process.exit(1);
+  }
+  const r = spawnSync("node", [briefsScript, "list", "--slug", slug], {
+    stdio: "inherit",
+    cwd: process.cwd(),
+    env: { ...process.env, DEMOBITE_CLI: "1" },
+  });
+  if (r.status !== 0) process.exit(r.status ?? 1);
+  console.log(`
+Follow the agentic-recorder skill (${path.join(dest, "SKILL.md").replace(os.homedir(), "~")}, section "Record a batch by slug"):
+claim each brief (\`node scripts/briefs.mjs claim <batchId> <briefId>\`), storyboard, film, upload.
+One storyboard approval per brief. Film the briefs in the order above, one at a time.
+The bundle is in .recorder/radar/${slug}/bundle.json. When every take is delivered, report the
+workflow page link printed above; the person watches the demos arrive there.
+`);
+  process.exit(0);
+}
 
 // ── 1. Environment checks ──────────────────────────────────────────────────
 const nodeMajor = Number(process.versions.node.split(".")[0]);
@@ -52,8 +114,6 @@ if (hasBin("claude")) ok("Claude Code (drives the recorder; MCP registers automa
 else warn("Claude Code not found — using Cursor or Codex? They drive the recorder too; MCP setup prints below");
 
 // ── 2. Install / update the skill ──────────────────────────────────────────
-const skillsDir = path.join(os.homedir(), ".claude", "skills");
-const dest = path.join(skillsDir, "agentic-recorder");
 fs.mkdirSync(dest, { recursive: true });
 fs.mkdirSync(path.join(dest, "scripts"), { recursive: true });
 const copy = (from, to) => fs.copyFileSync(path.join(pkgRoot, from), path.join(dest, to));
@@ -112,10 +172,6 @@ if (arg === "login" || arg === "logout") {
 // The key lives in <cwd>/.recorder/config.json (login.mjs writes it there),
 // so MCP registration is per-project too — `claude mcp add` default (local)
 // scope matches that exactly and keeps the key out of committable files.
-const readCfg = () => {
-  try { return JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "config.json"), "utf8")); }
-  catch { return null; }
-};
 const registerMcp = (cfg, { quiet = false } = {}) => {
   const url = `${cfg.base ?? "https://app.demobites.com"}/api/mcp`;
   const header = `Authorization: Bearer ${cfg.api_key}`;
