@@ -3,7 +3,12 @@
 //
 //   node briefs.mjs list <batchId> [--paste <file>]     the authenticated truth for the batch (warns when a pasted bundle drifted)
 //   node briefs.mjs list --slug <slug>                  UPDATE RADAR (1.6.0): the batch behind a workflow's record code; writes
-//                                                       .recorder/radar/<slug>/bundle.json and prints the briefs in order
+//                                                       .recorder/radar/<slug>/bundle.json (+ briefs/<briefId>.json, one draft
+//                                                       per brief) and prints the briefs in order with their open questions
+//   node briefs.mjs refine <slug> <briefId> [--file <refined.json>] [--note "..."]
+//                                                       REFACTOR PASS (1.7.0): post the brief refined on this machine (default file
+//                                                       .recorder/radar/<slug>/refined/<briefId>.json) → a new revision; the Radar
+//                                                       page shows it as "Refined on your machine"; rewrites the bundle
 //   node briefs.mjs claim <batchId> <briefId> [--force] claim one brief → mints an attempt, creates take-<briefId>-r<revision>/brief.json
 //   node briefs.mjs event <takeDir|attemptRef> <event> [--note "..."]
 //                                                       planning | awaiting_storyboard_approval | recording | uploading | failed | cancelled
@@ -15,13 +20,19 @@
 //                                             404 { error: "unknown_slug" } · 409 { error: "not_approved" }
 //   PUT /api/recorder/briefs/claim { briefId, revision, contentHash, idempotencyKey, force? }
 //   PUT /api/recorder/briefs/attempts/<attemptRef> { event, note? }
+//   PUT /api/recorder/briefs/<briefId>/refine { revision, contentHash, content, note? }
+//                                             -> { revision, contentHash }   (409 hash_mismatch · 410 superseded)
 // The stage call (upload.mjs) sends the attempt from <takeDir>/brief.json, and
 // after the uploads calls the delivery route from the claim's `api.uploaded`
 // (1.3.0): a take filmed from a brief becomes a bite by itself.
 //
-// Laws: one storyboard approval per brief, never one word for the batch.
-// Sequential takes, one Chrome on the profile. A failed brief never stops the
-// others. Never print the api_key.
+// Laws (founder ruling 2026-09-26, "the fewest edits before Export and Go
+// live"): every brief is refined against the repository and the running app
+// BEFORE anything films, and posted back through `refine`; every open
+// question is asked ONCE for the whole batch; the batch gets ONE approval;
+// then batch.mjs films the takes in the background, in parallel, each on its
+// own profile directory. A failed brief never stops the others. Never print
+// the api_key.
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -29,7 +40,7 @@ import crypto from "node:crypto";
 const [, , cmd, ...rest] = process.argv;
 const flag = (name) => rest.includes(name);
 const opt = (name) => { const i = rest.indexOf(name); return i >= 0 ? String(rest[i + 1] ?? "") : null; };
-const positional = rest.filter((a, i) => !a.startsWith("--") && !(i > 0 && ["--paste", "--note", "--slug"].includes(rest[i - 1])));
+const positional = rest.filter((a, i) => !a.startsWith("--") && !(i > 0 && ["--paste", "--note", "--slug", "--file"].includes(rest[i - 1])));
 // `npx demobite record <slug>` runs this script (DEMOBITE_CLI=1); its login hint is the launcher's command.
 const loginHint = process.env.DEMOBITE_CLI ? "npx demobite login" : "node scripts/login.mjs";
 
@@ -37,12 +48,13 @@ function usage(code = 2) {
   console.error(`Usage:
   node briefs.mjs list <batchId> [--paste <file>]
   node briefs.mjs list --slug <slug>
+  node briefs.mjs refine <slug> <briefId> [--file <refined.json>] [--note "..."]
   node briefs.mjs claim <batchId> <briefId> [--force]
   node briefs.mjs event <takeDir|attemptRef> <event> [--note "..."]
   node briefs.mjs release <takeDir|attemptRef> [--note "..."]`);
   process.exit(code);
 }
-if (!cmd || !["list", "claim", "event", "release"].includes(cmd)) usage();
+if (!cmd || !["list", "claim", "event", "release", "refine"].includes(cmd)) usage();
 
 const cfgPath = path.resolve(".recorder", "config.json");
 let cfg = {};
@@ -126,26 +138,57 @@ function printRadar(data, slug) {
   // A radar batch has no target address: the agent films where the code
   // already runs (the Record stage says so); print the target only when set.
   console.log(`Batch ${batch?.id ?? "?"}${batch?.target?.url ? `  target ${batch.target.url}${batch.target.environment ? ` (${batch.target.environment})` : ""}` : ""}`);
-  console.log(`${briefs.length} brief${briefs.length === 1 ? "" : "s"}, each at most ${batch?.rules?.maxSeconds ?? 90} seconds, filmed in this order:\n`);
+  console.log(`${briefs.length} brief${briefs.length === 1 ? "" : "s"}, each at most ${batch?.rules?.maxSeconds ?? 90} seconds, in this order:\n`);
+  const questions = [];
   order.forEach((b, i) => {
     const pos = String(i + 1).padStart(2, " ");
     const secs = b.estimatedDurationSec ? `about ${b.estimatedDurationSec}s` : "length open";
     const state = b.status && b.status !== "approved" ? `  [${b.status}${b.attempt ? `, attempt ${b.attempt.ref}` : ""}]` : "";
-    console.log(`  ${pos}. ${b.title}  (${secs})  brief ${b.briefId} r${b.revision}${state}`);
+    const refined = b.refinedLocally || b.refined ? "  (refined on this machine)" : "";
+    console.log(`  ${pos}. ${b.title}  (${secs})  brief ${b.briefId} r${b.revision}${state}${refined}`);
+    for (const q of b.questions ?? []) questions.push({ n: i + 1, title: b.title, q: typeof q === "string" ? q : q?.text ?? JSON.stringify(q) });
   });
+  // QUESTIONS ONCE (2026-09-26): the drafts' open questions, gathered here so
+  // the agent asks them in one message for the whole batch, never mid-filming.
+  if (questions.length) {
+    console.log(`\nOpen questions in the drafts (ask them once, for the whole batch, before anything films):`);
+    for (const { n, title, q } of questions) console.log(`  brief ${n} (${title}): ${q}`);
+  }
   if (radar?.workflowUrl) console.log(`\nWorkflow page: ${radar.workflowUrl}`);
+}
+
+/** The radar bundle on disk: bundle.json plus one draft file per brief (what
+ * the refactor pass starts from; the refined copy goes to refined/<briefId>.json). */
+function writeRadarBundle(slug, data) {
+  const dir = path.resolve(".recorder", "radar", slug);
+  fs.mkdirSync(path.join(dir, "briefs"), { recursive: true });
+  const bundlePath = path.join(dir, "bundle.json");
+  fs.writeFileSync(bundlePath, JSON.stringify({ slug, fetchedAt: new Date().toISOString(), ...data }, null, 2) + "\n");
+  for (const b of data.briefs) {
+    const safe = String(b.briefId).replace(/[^A-Za-z0-9._-]+/g, "-");
+    fs.writeFileSync(path.join(dir, "briefs", `${safe}.json`), JSON.stringify(b, null, 2) + "\n");
+  }
+  return bundlePath;
+}
+
+/** The brief's content for the refine door: everything the agent may change,
+ * never the identity the server owns (id, revision, hash, state, attempt, order). */
+const IDENTITY_FIELDS = new Set(["briefId", "revision", "contentHash", "status", "attempt", "position", "refinedLocally", "refined", "batchId", "createdAt", "updatedAt"]);
+function refineContent(obj) {
+  const src = obj && typeof obj === "object" && obj.content && typeof obj.content === "object" ? obj.content : obj;
+  const out = {};
+  for (const [k, v] of Object.entries(src ?? {})) if (!IDENTITY_FIELDS.has(k)) out[k] = v;
+  return out;
 }
 
 if (cmd === "list" && opt("--slug") !== null) {
   const slug = String(opt("--slug")).trim().toLowerCase();
   if (!/^[a-z0-9-]{1,32}$/.test(slug)) { console.error("The record code is the short code on the Update Radar page, like k3fx9q."); process.exit(2); }
   const data = await fetchBySlug(slug);
-  const dir = path.resolve(".recorder", "radar", slug);
-  fs.mkdirSync(dir, { recursive: true });
-  const bundlePath = path.join(dir, "bundle.json");
-  fs.writeFileSync(bundlePath, JSON.stringify({ slug, fetchedAt: new Date().toISOString(), ...data }, null, 2) + "\n");
+  const bundlePath = writeRadarBundle(slug, data);
   printRadar(data, slug);
-  console.log(`Bundle written: ${path.relative(process.cwd(), bundlePath) || bundlePath}`);
+  const rel = path.relative(process.cwd(), bundlePath) || bundlePath;
+  console.log(`Bundle written: ${rel}  (one draft per brief in ${path.dirname(rel)}/briefs/, refined copies go to ${path.dirname(rel)}/refined/)`);
 } else if (cmd === "list") {
   const batchId = positional[0];
   if (!batchId) usage();
@@ -167,6 +210,37 @@ if (cmd === "list" && opt("--slug") !== null) {
     if (drift === 0) console.log("\nThe pasted bundle matches the approved briefs.");
     else process.exitCode = 3;
   }
+}
+
+// REFACTOR PASS (1.7.0): post a brief refined on this machine. The server
+// mints a new revision + contentHash for it and the Radar page shows the
+// refined text ("Refined on your machine"); the claim then takes the new
+// revision, so the bundle is rewritten from the server right after.
+if (cmd === "refine") {
+  const [slugArg, briefId] = positional;
+  const slug = String(slugArg ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9-]{1,32}$/.test(slug) || !briefId) usage();
+  const safe = String(briefId).replace(/[^A-Za-z0-9._-]+/g, "-");
+  const file = opt("--file") ?? path.resolve(".recorder", "radar", slug, "refined", `${safe}.json`);
+  let refined;
+  try { refined = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { console.error(`Refined brief not readable at ${file}: ${e.message}\nWrite the refined brief there (copy .recorder/radar/${slug}/briefs/${safe}.json and edit it), or pass --file.`); process.exit(2); }
+  const content = refineContent(refined);
+  if (!content.title || !Array.isArray(content.flowIntent) || content.flowIntent.length === 0) { console.error(`${file}: a refined brief needs at least a title and a non-empty flowIntent[].`); process.exit(2); }
+  const data = await fetchBySlug(slug);
+  const brief = data.briefs.find((b) => String(b.briefId) === String(briefId));
+  if (!brief) { console.error(`Brief ${briefId} is not in the batch behind code ${slug}.`); process.exit(1); }
+  const note = opt("--note");
+  const r = await api("PUT", `/api/recorder/briefs/${encodeURIComponent(brief.briefId)}/refine`, {
+    revision: brief.revision, contentHash: brief.contentHash, content, ...(note ? { note: note.slice(0, 600) } : {}),
+  });
+  if (r.status === 404 && !r.json?.error) { console.error("This DemoBites has no refine route yet (older server). Film from the refined file on this machine; the Radar page keeps the cloud draft."); process.exit(1); }
+  if (r.status === 409 && (r.json?.error === "hash_mismatch" || r.json?.error === "active_attempt")) { console.error(`Brief ${briefId}: ${r.json.error === "active_attempt" ? "a live attempt holds it; a refine lands before the claim, never after" : "the server's revision moved; run list --slug again and refine from the current draft"}.`); process.exit(1); }
+  if (r.status === 410) { console.error(`Brief ${briefId} r${brief.revision} was superseded by a newer revision. Run list --slug again.`); process.exit(1); }
+  if (!r.ok || r.json?.revision === undefined) { console.error(`Refine failed: ${r.status} ${r.json ? JSON.stringify(r.json).slice(0, 200) : ""}`); process.exit(1); }
+  console.log(`Refined ${brief.briefId}: r${brief.revision} → r${r.json.revision} (${r.json.contentHash ?? "hash from the server"}). The Radar page shows it as refined on this machine.`);
+  const fresh = await fetchBySlug(slug);
+  writeRadarBundle(slug, fresh);
+  console.log(`Bundle rewritten: .recorder/radar/${slug}/bundle.json`);
 }
 
 if (cmd === "claim") {
