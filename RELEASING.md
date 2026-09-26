@@ -14,6 +14,13 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 
 ## Changelog
 
+### 1.7.0 (not yet published)
+
+- Update Radar batches film in four steps (founder ruling 2026-09-26, "the fewest edits before Export and Go live"): List → Refactor + questions → One approval → Film in the background.
+- `briefs.mjs refine <slug> <briefId>` posts a brief refined on the machine (`PUT /api/recorder/briefs/<briefId>/refine`); the Radar page shows it as "Refined on your machine". `list --slug` writes one draft per brief and gathers the drafts' open questions so the agent asks them once for the whole batch.
+- `batch.mjs run <slug> [--concurrency N]` films every approved storyboard in a pool (2 on 8 cores or 16 GB or less, 3 above, never more than 4), each take on its own profile directory seeded from `.recorder/profile` (`RECORDER_PROFILE` in record/cleanup/vocab), delivers each take as it lands, keeps per-take logs under `.recorder/radar/<slug>/takes/<briefId>/`, and ends with the workflow page. `batch.mjs plan <slug>` shows the pool without filming.
+- One approval for the batch replaces one storyboard approval per brief on a Radar run; the single-take path is unchanged.
+
 ### 1.5.0 (not yet published)
 
 - Every take is delivered directly. After both uploads `upload.mjs` always calls the uploaded door (`PUT <base>/api/recorder/stage/<id>/uploaded`), plain prompt takes too, not only brief takes. No Approve click, no preview page.
