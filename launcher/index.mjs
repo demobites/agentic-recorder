@@ -167,7 +167,10 @@ if (!haveChrome) {
 
 // ── 3. Subcommands ─────────────────────────────────────────────────────────
 if (arg === "login" || arg === "logout") {
-  const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs"), ...(arg === "logout" ? ["--logout"] : [])], {
+  // `login <base>` forwards the base (dev, a preview) to login.mjs, which
+  // resolves it before config.base and the production default. Logout
+  // forwards nothing extra: the key's own home always wins there.
+  const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs"), ...(arg === "logout" ? ["--logout"] : process.argv.slice(3))], {
     stdio: "inherit",
     cwd: process.cwd(),
   });
