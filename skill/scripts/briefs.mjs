@@ -265,6 +265,7 @@ if (cmd === "refine") {
   });
   if (r.status === 404 && !r.json?.error) { console.error("This DemoBites has no refine route yet (older server). Film from the refined file on this machine; the Radar page keeps the cloud draft."); process.exit(1); }
   if (r.status === 409 && (r.json?.error === "hash_mismatch" || r.json?.error === "active_attempt")) { console.error(`Brief ${briefId}: ${r.json.error === "active_attempt" ? "a live attempt holds it; a refine lands before the claim, never after" : "the server's revision moved; run list --slug again and refine from the current draft"}.`); process.exit(1); }
+  if (r.status === 410 && r.json?.error === "take_delivered") { console.error(`Brief ${briefId} is locked: a take was delivered for it, so its text on the Radar page is frozen. Film the re-take from your refined file; the Radar page keeps the delivered wording.`); process.exit(1); }
   if (r.status === 410) { console.error(`Brief ${briefId} r${brief.revision} was superseded by a newer revision. Run list --slug again.`); process.exit(1); }
   if (!r.ok || r.json?.revision === undefined) { console.error(`Refine failed: ${r.status} ${r.json ? JSON.stringify(r.json).slice(0, 200) : ""}`); process.exit(1); }
   console.log(`Refined ${brief.briefId}: r${brief.revision} → r${r.json.revision} (${r.json.contentHash ?? "hash from the server"}). The Radar page shows it as refined on this machine.`);
