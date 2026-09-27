@@ -171,13 +171,42 @@ function writeRadarBundle(slug, data) {
   return bundlePath;
 }
 
-/** The brief's content for the refine door: everything the agent may change,
- * never the identity the server owns (id, revision, hash, state, attempt, order). */
-const IDENTITY_FIELDS = new Set(["briefId", "revision", "contentHash", "status", "attempt", "position", "refinedLocally", "refined", "batchId", "createdAt", "updatedAt"]);
+/** The brief's content for the refine door: ONLY the seven content fields
+ * the server's strict schema accepts, read from the draft file's top level or
+ * its `content` object; every other key a draft carries (identity, state,
+ * questions, author, attempts) is dropped, so a draft round-trips as is.
+ * The limits are the server's (a refine that breaks one answers 400
+ * invalid_refine): title ≤ 80, audience ≤ 60, outcome ≤ 200, flowIntent 2..8
+ * lines ≤ 120 each, prerequisites/exclusions ≤ 6 lines ≤ 160 each,
+ * estimatedDurationSec 15..90. They are checked here first, with the field
+ * named, so the agent trims before posting instead of reading a 400. */
+const CONTENT_LIMITS = { title: 80, audience: 60, outcome: 200 };
+const LIST_LIMITS = { flowIntent: { min: 2, max: 8, line: 120 }, prerequisites: { min: 0, max: 6, line: 160 }, exclusions: { min: 0, max: 6, line: 160 } };
 function refineContent(obj) {
-  const src = obj && typeof obj === "object" && obj.content && typeof obj.content === "object" ? obj.content : obj;
+  const src = obj && typeof obj === "object" && obj.content && typeof obj.content === "object" ? obj.content : obj ?? {};
+  const pick = (camel, snake) => src[camel] !== undefined ? src[camel] : src[snake];
   const out = {};
-  for (const [k, v] of Object.entries(src ?? {})) if (!IDENTITY_FIELDS.has(k)) out[k] = v;
+  for (const k of ["title", "audience", "outcome"]) if (src[k] !== undefined) out[k] = src[k];
+  const fi = pick("flowIntent", "flow_intent"); if (fi !== undefined) out.flowIntent = fi;
+  for (const k of ["prerequisites", "exclusions"]) if (src[k] !== undefined) out[k] = src[k];
+  const d = pick("estimatedDurationSec", "estimated_duration_sec"); if (d !== undefined) out.estimatedDurationSec = d;
+  return out;
+}
+/** The server's limits, checked before the PUT; returns the problems as "field: why" lines. */
+function refineProblems(c) {
+  const out = [];
+  for (const [k, max] of Object.entries(CONTENT_LIMITS)) {
+    if (typeof c[k] !== "string" || !c[k].trim()) out.push(`${k}: required, a non-empty line`);
+    else if (c[k].trim().length > max) out.push(`${k}: ${c[k].trim().length} characters, the limit is ${max}`);
+  }
+  for (const [k, lim] of Object.entries(LIST_LIMITS)) {
+    const v = c[k] ?? [];
+    if (!Array.isArray(v)) { out.push(`${k}: must be a list of lines`); continue; }
+    if (v.length < lim.min || v.length > lim.max) out.push(`${k}: ${v.length} lines, allowed ${lim.min}..${lim.max}`);
+    v.forEach((line, i) => { if (typeof line !== "string" || !line.trim()) out.push(`${k}[${i}]: an empty line`); else if (line.trim().length > lim.line) out.push(`${k}[${i}]: ${line.trim().length} characters, the limit is ${lim.line}`); });
+  }
+  const d = c.estimatedDurationSec;
+  if (!Number.isInteger(d) || d < 15 || d > 90) out.push(`estimatedDurationSec: ${JSON.stringify(d)}, must be a whole number of seconds 15..90`);
   return out;
 }
 
@@ -225,7 +254,8 @@ if (cmd === "refine") {
   let refined;
   try { refined = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { console.error(`Refined brief not readable at ${file}: ${e.message}\nWrite the refined brief there (copy .recorder/radar/${slug}/briefs/${safe}.json and edit it), or pass --file.`); process.exit(2); }
   const content = refineContent(refined);
-  if (!content.title || !Array.isArray(content.flowIntent) || content.flowIntent.length === 0) { console.error(`${file}: a refined brief needs at least a title and a non-empty flowIntent[].`); process.exit(2); }
+  const problems = refineProblems(content);
+  if (problems.length) { console.error(`${file}: the refined brief breaks the server's limits — fix these and post again:\n  ${problems.join("\n  ")}`); process.exit(2); }
   const data = await fetchBySlug(slug);
   const brief = data.briefs.find((b) => String(b.briefId) === String(briefId));
   if (!brief) { console.error(`Brief ${briefId} is not in the batch behind code ${slug}.`); process.exit(1); }
