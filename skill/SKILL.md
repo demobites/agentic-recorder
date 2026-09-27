@@ -164,6 +164,19 @@ Holding shots to cover estimated lines is what produced a 60 second take with th
 
 **LAW: page transitions are cut and faded, never watched.** When the story moves to another page, the viewer sees page one, a short fade, page two — never the loading blank. record.mjs stamps every mid-take `goto` and manifest.mjs cuts that window out with a fade (`cuts` in the wire manifest); the ingestion lays it on the bite as a timeline cut. No zoom and no narration live inside a cut (the studio forbids both), so put the line about the new page on the beat AFTER it has landed, and say goodbye to the old page BEFORE the goto.
 
+### FRAMING: the camera obeys the script
+
+Framing is our job, never the customer's (founder, 2026-09-27). Decide it from the narration you wrote. The customer never hears about zooms, framing or the cursor.
+
+- Every step gets `frame`: `"close"` or `"wide"`.
+- A field, a button, a menu item, a toggle, a badge, a row = `"close"`.
+- Landing on a page, a report, a chart, a table, a dashboard, a list of results = `"wide"`. So is every line that says "here is", "you see", "you land on", "the whole".
+- A `type` step with `enter` is close for the typing. What Enter reveals is wide by itself; the recorder sees the new page. Do not add a beat for it.
+- A bare `settle` right after a navigation is wide by itself.
+- Two consecutive wides on the same page are one shot. Write both; the server joins them.
+- Never more than 4 seconds of close on a static screen. When the line runs longer, the beat is wide.
+- No `frame` = the recorder's own choice, close on the subject. `reveals: false` keeps the camera where it is after a click or an Enter.
+
 Storyboard schema (`rulesVersion` and per-step `rules` come from Phase 1b):
 
 ```json
@@ -183,7 +196,7 @@ Storyboard schema (`rulesVersion` and per-step `rules` come from Phase 1b):
 }
 ```
 
-Step fields: `action` is one of `goto | settle | scroll | click | hover | type | expect`. `rules` (optional, any step) lists the numbers of the workspace rules that shaped the beat; the storyboard's top-level `rulesVersion` names the rule set (Phase 1b). **Durations (`dwell`, `after`, settle `ms`, scroll `ms`) are milliseconds; a value under 60 is read as seconds** (write `"dwell": 3400` or `"dwell": 3.4`, never `"dwell": 3` meaning 3 ms). `goto` needs `url`. `settle` takes `ms` and an optional `focus` selector. `scroll` needs `dy` and takes `ms`. `click`/`hover` need `selector` and take `minY` (minimum Y for the visible instance pick), `dwell`, `after`, `waitLoad`. Every step takes `label` and `narration`.
+Step fields: `action` is one of `goto | settle | scroll | click | hover | type | expect`. `rules` (optional, any step) lists the numbers of the workspace rules that shaped the beat; the storyboard's top-level `rulesVersion` names the rule set (Phase 1b). **Durations (`dwell`, `after`, settle `ms`, scroll `ms`) are milliseconds; a value under 60 is read as seconds** (write `"dwell": 3400` or `"dwell": 3.4`, never `"dwell": 3` meaning 3 ms). `goto` needs `url`. `settle` takes `ms` and an optional `focus` selector. `scroll` needs `dy` and takes `ms`. `click`/`hover` need `selector` and take `minY` (minimum Y for the visible instance pick), `dwell`, `after`, `waitLoad`. `type` needs `selector` and `text` and takes `enter` (press Enter after the text), `clear`, `after`, `reveals`. Every step takes `label`, `narration` and `frame` (`"close"` or `"wide"`, the FRAMING law above; any other value stops the take).
 
 Beyond `steps`, a storyboard may carry the off-camera blocks (Phase 3a/law above); `cleanup.mjs` runs them on the same profile without video:
 
@@ -220,7 +233,7 @@ Two fields carry the whole advantage of this lane, so fill them in:
 
 Use `hideCss` for chat widgets and cookie banners that would pollute the picture. The first `goto` opens the video, so the first narration goes on the settle right after it.
 
-**Show the storyboard inline and get approval before filming.** Present it as a numbered shot list, not raw JSON. Say the target length out loud so the human can push back on pacing before you burn a take. Iterate until they say go.
+**Show the storyboard inline and get approval before filming.** Present it as a numbered shot list, not raw JSON. The list is the story: what the viewer sees and hears, beat by beat. Never zooms, framing, selectors or the cursor. Say the target length out loud so the human can push back on pacing before you burn a take. Iterate until they say go.
 
 The presentation has three blocks, always: the shot list (irreversible beats marked "pointed at, not pressed"), **"Before the camera"** (what `prep[]` creates) and **"After the cut"** (the `cleanup_plan[]` sentences). A storyboard whose flow needs data and has no prep, or creates anything and has no cleanup plan, is not ready to show.
 
@@ -291,6 +304,7 @@ Filming laws baked into `record.mjs`, do not reimplement or weaken them:
 - Mouse coordinate clicks: the real mouse tracks the drawn cursor, hover states fire naturally.
 - **The camera follows the subject, measured off the live page.** Every hover records the hovered element's rectangle. Every click records TWO shots: the control on approach, and then whatever the click opened. A click that opens a menu or a dialog moves the subject somewhere else on screen, so a camera left on the button shows a dimmed backdrop while the thing you just opened sits off frame.
 - **Shots overlap on purpose.** The manifest's camera path is chained by the backend so the runtime travels from one subject to the next at zoom. Never "fix" this into a non overlapping sequence, that is the pull out to 1.0 between every shot.
+- **A landing is wide.** A `type` with `enter` ends its close shot the moment before Enter; what Enter revealed (a new URL, a page that changed) is a full-frame `wide: true` shot, and so is a bare settle after a navigation and any step framed `wide`. The server ends the previous zoom at the wide's start and never holds a close shot over it (founder, 2026-09-27).
 
 If the take fails mid flow, the partial video and manifest are still saved. Diagnose, fix the storyboard, film again.
 
@@ -409,13 +423,17 @@ The answer to `list --slug` is the batch payload plus `radar: { slug, name, work
 
 Write the refined brief to `.recorder/radar/<slug>/refined/<briefId>.json` (copy the draft from `briefs/<briefId>.json` and edit it; same fields — the command keeps only the seven content fields, so the draft's other keys may stay) and post it back: `node scripts/briefs.mjs refine <slug> <briefId> --note "<what you changed and why>"`. The server mints a new revision and the Radar page shows that brief as "Refined on your machine", so the human sees what will be filmed before it is filmed. The command rewrites the bundle with the new revisions; the claim in step 4 takes them. The server's limits, checked before the post and named on failure: title ≤ 80 characters, audience ≤ 60, outcome ≤ 200, flowIntent 2–8 lines of ≤ 120, prerequisites and exclusions up to 6 lines of ≤ 160, estimatedDurationSec a whole number 15–90. Write within them; a refine over a limit is refused, never truncated. A brief that needs no change is not posted. An older DemoBites without the refine route answers so; then film from your refined file and say that the page still shows the cloud draft.
 
-**Questions once, for the whole batch.** While you walk the briefs, collect every open question: the drafts' `questions[]` (printed by `list`), the account or login the flows need, test data that must exist, feature flags, the URL and environment to film on, and anything else you cannot decide from the code and the app. Ask them in ONE message, numbered, brief by brief, and wait for the answers. Never a question mid-filming: a take that would need one is not ready to film, and it is said so in this message. When there is nothing to ask, say that in one line and go on.
+**The brief stays a story** (founder ruling, 2026-09-27). What the human approves is narrative only: "this is the story I'd like to tell", the beats in plain words, the outcome. Never a word about zooms, framing, the cursor, verification, selectors or how you direct. Not in the refined brief, not in the refine note, not in the approval text. Directing is your job and it stays behind the scenes.
+
+**Double-checked behind the scenes.** Before anything is shown, check every brief against the running app and the repository: go there, open the screens, click the path, see the report land. Correct the storyboard silently. Only a change at the level of the story reaches the refine note, in one line ("the app has no Export here; the story ends on Schedule").
+
+**Questions once, for the whole batch.** Only what the app and the code cannot answer. While you walk the briefs, collect every open question: the drafts' `questions[]` (printed by `list`), the account or login the flows need, test data that must exist, feature flags, the URL and environment to film on, and anything else you cannot decide from the code and the app. Ask them in ONE message, numbered, brief by brief, and wait for the answers. Never a question mid-filming: a take that would need one is not ready to film, and it is said so in this message. When there is nothing to ask, say that in one line and go on.
 
 Then write every storyboard (Phase 3, the refined brief as the spec, the workspace rules below the laws, vocab.json as the only dictionary) into `.recorder/radar/<slug>/storyboards/<briefId>.json`, and run the headless dry run (Phase 4) for each of them on your own, before the human sees anything. A brief you could not refine into a filmable storyboard is reported with the reason and left without a storyboard; `batch.mjs` skips it and says so.
 
 ### 3. One approval for the batch
 
-Show the refined storyboards for ALL briefs together, each as a numbered shot list with its three blocks (the shot list with "pointed at, not pressed" beats, "Before the camera", "After the cut"), its estimated length, the rules applied, and what changed against the cloud draft in one line per brief. Then ask for one yes for the batch: "Film these 3?". **One word for the batch replaces one approval per brief** (founder ruling, 2026-09-26). The human may strike a brief from the batch in their answer ("film 1 and 3"); that brief gets no storyboard in `storyboards/` (or `--only <briefId,...>` on the run). A no on the batch means back to step 2, not filming a subset. `node scripts/batch.mjs plan <slug>` shows what the run will do: the pool size for this machine and which briefs have a storyboard.
+Show the refined storyboards for ALL briefs together, each as a numbered shot list with its three blocks (the shot list with "pointed at, not pressed" beats, "Before the camera", "After the cut"), its estimated length, the rules applied, and what changed against the cloud draft in one line per brief (the story, never the directing). Then ask for one yes for the batch: "Film these 3?". **One word for the batch replaces one approval per brief** (founder ruling, 2026-09-26). The human may strike a brief from the batch in their answer ("film 1 and 3"); that brief gets no storyboard in `storyboards/` (or `--only <briefId,...>` on the run). A no on the batch means back to step 2, not filming a subset. `node scripts/batch.mjs plan <slug>` shows what the run will do: the pool size for this machine and which briefs have a storyboard.
 
 ### 4. Film in the background, in parallel
 
@@ -451,10 +469,12 @@ Resume like a batch: what is on disk (`take-*` directories, `takes/<briefId>/res
     click?: { x, y, t },                     // frame px + seconds
     narration?: { text, t, estimated_duration }
   }],
-  camera: [{ t_start, t_end, x, y, w, h, label }],  // focus rectangles, frame px
+  camera: [{ t_start, t_end, x, y, w, h, label, n?, revealed?, wide?, glide? }],  // focus rectangles, frame px
   cuts?: [{ t_start, t_end, transition: 'fade'|'abrupt', n }]  // navigation loads, cut out of the bite
 }
 ```
+
+`wide: true` on a camera shot is the camera at 1.0 for the span: the server ends the previous zoom at its start, joins consecutive wides, and writes no zoom for it.
 
 `estimated_duration` is only ever an estimate and nothing downstream treats it as final.
 

@@ -194,6 +194,9 @@ const camera = (man.shots ?? [])
     label: s.label ?? undefined,
     ...(s.n != null ? { n: s.n } : {}),
     ...(s.revealed ? { revealed: true } : {}),
+    // WIDE (founder 2026-09-27): the camera at 1.0 for the span — the server
+    // ends the previous zoom at its start and writes no zoom row for it.
+    ...(s.wide ? { wide: true } : {}),
     ...(s.glide ? { glide: { t_start: norm(s.glide.t_start), t_end: norm(s.glide.t_end) } } : {}),
   }))
   .filter((s) => s.t_end > s.t_start && s.t_start < duration && s.w > 0 && s.h > 0)
@@ -269,7 +272,9 @@ if (fs.existsSync(cleanPath)) {
       const wideStart = round2(st.click.t);
       const wideEnd = round2(Math.min(duration, st.t_end));
       if (wideEnd - wideStart >= 0.6) {
-        camera.push({ t_start: wideStart, t_end: wideEnd, x: 0, y: 0, w: FW, h: FH, n: st.n, label: `${st.label || "click"}, new page` });
+        // `wide: true` so the server frames it at 1.0 (an untagged full frame
+        // used to land on the 1.25 zoom floor — a phantom zoom on the new page).
+        camera.push({ t_start: wideStart, t_end: wideEnd, x: 0, y: 0, w: FW, h: FH, n: st.n, wide: true, label: `${st.label || "click"}, new page` });
         camera.sort((a, b) => a.t_start - b.t_start);
       }
       console.log(`consequence: step ${st.n} navigation — reset to wide at ${wideStart}s`);

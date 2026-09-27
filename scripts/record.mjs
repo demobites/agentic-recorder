@@ -65,6 +65,10 @@ for (const [i, s] of STORYBOARD.steps.entries()) {
   if ((s.action === "click" || s.action === "hover") && !s.selector) { console.error(`${at}: ${s.action} needs selector`); process.exit(2); }
   if (s.action === "type" && (!s.selector || typeof s.text !== "string")) { console.error(`${at}: type needs selector and text`); process.exit(2); }
   if (s.action === "expect" && !s.selector) { console.error(`${at}: expect needs selector`); process.exit(2); }
+  // FRAMING (founder ruling 2026-09-27): `frame` is the director's word on the
+  // step's camera — "close" (the auto subject box) or "wide" (the full frame,
+  // the camera at 1.0). Absent = auto. Anything else is a typo, not a wish.
+  if (s.frame !== undefined && s.frame !== "close" && s.frame !== "wide") { console.error(`${at}: frame must be "close" or "wide" (got ${JSON.stringify(s.frame)})`); process.exit(2); }
 }
 
 const DIR = path.resolve(outArg);
@@ -72,7 +76,7 @@ const DIR = path.resolve(outArg);
 // RE-TAKE (founder 2026-09-02): the storyboard IS the bite's DNA. Keep a verbatim
 // copy in the take dir so upload.mjs can stage it as the recording recipe —
 // selectors, urls, typed text, hideCss — the wire manifest alone cannot re-film.
-const ENGINE_VERSION = "1.0.9";
+const ENGINE_VERSION = "1.1.0";
 fs.mkdirSync(DIR, { recursive: true });
 // The copy is the RECIPE, not the transport: cdpWsUrl / storageStatePath are
 // per-take plumbing stamped by the cloud runner (a CDP url carries a session
@@ -410,6 +414,46 @@ const pushShot = (box, tStart, tEnd, label, extra) => {
   });
 };
 
+// LAW (the camera obeys the script, founder 2026-09-27, bite 1117): a WIDE
+// shot is the full frame — the camera at 1.0 — and the server honours it as a
+// boundary: the previous close shot ENDS at its start, nothing tight is merged
+// into it or held over it. What Enter revealed, a settle after a navigation,
+// and any step the director framed `wide` are wide shots. Framing is OUR job,
+// decided from the narration we wrote; the customer never thinks about zooms.
+const FULL_FRAME = { x: 0, y: 0, width: VIEW.width, height: VIEW.height };
+const pushWide = (tStart, tEnd, label, extra) =>
+  pushShot(FULL_FRAME, tStart, tEnd, label ?? "wide", { ...(extra ?? {}), wide: true });
+// A wide shot pushed at the END of the step (after the narration hold), so it
+// spans the whole landing — the line "you land on the report" plays over it.
+let wideAfter = null; // { tStart, label, extra }
+const wantsWide = (step) => step.frame === "wide";
+const wantsClose = (step) => step.frame === "close";
+// The page as a signature, so a submit that swaps the page IN PLACE (a search
+// that re-renders a list, a client-side route change) counts as a landing
+// even when the URL held still: url, title, first heading, text mass.
+async function pageSignature() {
+  try {
+    return await page.evaluate(() => {
+      const h = [...document.querySelectorAll("h1, h2")].find((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+      return {
+        url: location.href,
+        title: document.title,
+        heading: h ? (h.textContent || "").trim().slice(0, 120) : "",
+        mass: (document.body?.innerText ?? "").trim().length,
+      };
+    });
+  } catch { return null; }
+}
+/** Did the page change substantially between two signatures? A new URL, a
+ *  new title or heading, or the text mass moving by more than a quarter. */
+const pageChanged = (a, b) => {
+  if (!a || !b) return false;
+  if (a.url !== b.url) return true;
+  if (a.title !== b.title || a.heading !== b.heading) return true;
+  const base = Math.max(200, a.mass);
+  return Math.abs(b.mass - a.mass) / base > 0.25;
+};
+
 // User-approved zoom (storyboard flow 2026-08-20, cloud planner + storyboard
 // page): a step may carry zoom {x,y,w,h} in PERCENT of the frame, adjusted by
 // the customer before filming. It overrides the auto shot box. zoom:null means
@@ -704,8 +748,13 @@ try {
 }
 
 let failure = null;
+// A navigation just happened (goto, a click that changed the URL, Enter that
+// changed the page) and no shot has framed the new page yet: the next bare
+// settle is the landing and is framed wide (founder 2026-09-27).
+let landingPending = false;
 try {
   for (const step of STORYBOARD.steps) {
+    wideAfter = null;
     const rec = {
       n: manifest.steps.length + 1,
       action: step.action,
@@ -795,23 +844,39 @@ try {
         openingBeatPending = true;
       }
       await page.evaluate(([a, b]) => window.__recSetCursor?.(a, b), [cx, cy]);
+      // The new page is a landing: the next bare settle frames it wide. A
+      // goto framed `wide` frames it from the paint itself.
+      landingPending = true;
+      if (wantsWide(step)) wideAfter = { tStart: rec.nav ? rec.nav.to : manifest.record_from, label: step.label ?? "open the page", extra: { n: rec.n } };
     } else if (step.action === "settle") {
       // A settle can still carry the camera: `focus` names what to look at.
+      // A settle framed `wide`, or a bare settle right after a navigation
+      // (the landing), is a full-frame shot for its whole span, narration
+      // hold included — "and you land on the report itself" plays wide.
       const settleMs = ms(step.ms, DEFAULT_SETTLE_MS);
       const shotStart = t();
-      await page.waitForTimeout(settleMs);
-      if (step.focus) {
-        const box = await visibleBox(step.focus, step.minY ?? 0, 4000);
-        pushShot(userShotBox(step, box), shotStart, t(), step.label, { n: rec.n });
-      } else if (step.zoom) {
-        pushShot(userShotBox(step, null), shotStart, t(), step.label, { n: rec.n });
+      const bare = !step.focus && !step.zoom;
+      if (wantsWide(step) || (bare && landingPending && !wantsClose(step))) {
+        wideAfter = { tStart: shotStart, label: step.label ?? "settle, wide", extra: { n: rec.n } };
+        await page.waitForTimeout(settleMs);
+      } else {
+        await page.waitForTimeout(settleMs);
+        if (step.focus) {
+          const box = await visibleBox(step.focus, step.minY ?? 0, 4000);
+          pushShot(userShotBox(step, box), shotStart, t(), step.label, { n: rec.n });
+        } else if (step.zoom) {
+          pushShot(userShotBox(step, null), shotStart, t(), step.label, { n: rec.n });
+        }
       }
+      landingPending = false;
     } else if (step.action === "scroll") {
       // scrollTo distances are ALSO zoomed-space under CSS zoom (measured:
       // scrollTo(0,600) moves 300 design px) — storyboards speak design px.
       const shotStart = t();
       await smoothScroll(step.dy * SUPERSAMPLE, ms(step.ms, 1400), step.within ?? null);
-      if (step.zoom) pushShot(userShotBox(step, null), shotStart, t(), step.label, { n: rec.n });
+      if (wantsWide(step)) wideAfter = { tStart: shotStart, label: step.label ?? "scroll, wide", extra: { n: rec.n } };
+      else if (step.zoom) pushShot(userShotBox(step, null), shotStart, t(), step.label, { n: rec.n });
+      landingPending = false;
     } else if (step.action === "click" || step.action === "hover") {
       const { box, el } = await visibleTarget(step.selector, step.minY ?? 0, step.action === "hover" ? 8000 : 15000);
       if (!box) {
@@ -871,6 +936,10 @@ try {
         },
       };
 
+      // The director's `frame: "wide"`: the whole step is one full-frame shot
+      // from arrival to the end of the beat; no subject box, no reveal shot.
+      const stepWide = wantsWide(step);
+      landingPending = false;
       if (step.action === "hover") {
         await page.waitForTimeout(ms(step.dwell, DEFAULT_HOVER_DWELL));
         // LAW (camera choreography, measured off the reference 2026-08-09):
@@ -880,13 +949,15 @@ try {
         // that, and the same ballistic motion read stiffer for it. The shot
         // begins just before ARRIVAL, so the previous frame holds still
         // while the cursor sweeps across it, then the camera reframes.
-        pushShot(userShotBox(step, step.focus ? await visibleBox(step.focus, 0, 3000) : box), Math.max(shotStart, arrivalT - 0.3), t(), step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
+        if (stepWide) wideAfter = { tStart: Math.max(shotStart, arrivalT - 0.3), label: step.label, extra: { n: rec.n } };
+        else pushShot(userShotBox(step, step.focus ? await visibleBox(step.focus, 0, 3000) : box), Math.max(shotStart, arrivalT - 0.3), t(), step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
       } else {
         await page.waitForTimeout(ms(step.dwell, DEFAULT_CLICK_DWELL));
         await page.evaluate(([a, b]) => window.__recPulse?.(a, b), [x, y]);
         await page.waitForTimeout(220);
         rec.click_at = t();
         const clickEventIndex = mouseEvents.length;
+        const urlBeforeClick = page.url();
         pushMouse("click", x, y, "left");
         await page.mouse.click(x, y);
         if (step.waitLoad) {
@@ -897,7 +968,8 @@ try {
         }
         // Shot one: the control — beginning near ARRIVAL (see the camera
         // choreography law above), never spanning the approach glide.
-        pushShot(userShotBox(step, box), Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
+        if (stepWide) wideAfter = { tStart: Math.max(shotStart, arrivalT - 0.3), label: step.label, extra: { n: rec.n } };
+        else pushShot(userShotBox(step, box), Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
         // LAW (press physics, founder 2026-08-09): a press has a down and an
         // up — but the up only exists if the clicked surface is still there.
         // A menu item or modal button that DESTROYS itself on click gets a
@@ -952,8 +1024,11 @@ try {
         await page.waitForTimeout(Math.max(0, afterMs - early));
         // Shot two: whatever the click opened. This is the shot that was
         // missing on 2026-08-08, when the camera stayed on the button while
-        // the dialog opened in the middle of the screen.
-        if (step.reveals !== false) {
+        // the dialog opened in the middle of the screen. A step framed wide
+        // already frames its result; a click that changed the URL leaves the
+        // landing to the settle that follows (framed wide there).
+        if (page.url() !== urlBeforeClick) landingPending = true;
+        if (step.reveals !== false && !stepWide) {
           const opened = await revealedBox(step);
           if (opened) {
             rec.revealed = {
@@ -961,6 +1036,7 @@ try {
               w: Math.round(opened.width / SUPERSAMPLE), h: Math.round(opened.height / SUPERSAMPLE),
             };
             pushShot(opened, rec.click_at + 0.35, t(), `${step.label ?? "click"}, result`, { n: rec.n, revealed: true });
+            landingPending = false;
           }
         }
       }
@@ -1010,6 +1086,10 @@ try {
       pushMouse("click", x, y, "left");
       await page.mouse.click(x, y);
       await page.waitForTimeout(380);
+      // The page as it was when the field was taken: a search that filters
+      // as you type has changed the page BEFORE Enter, and the reveal is
+      // still what this beat's typing and Enter produced.
+      const sigBefore = await pageSignature();
       if (step.clear) {
         await page.keyboard.press(process.platform === "darwin" ? "Meta+a" : "Control+a");
         await page.waitForTimeout(180);
@@ -1022,9 +1102,19 @@ try {
         await page.keyboard.type(ch);
         await page.waitForTimeout(34 + Math.random() * 70);
       }
+      const typeWide = wantsWide(step);
+      const glideWin = { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 };
+      landingPending = false;
       if (step.enter || step.submit) {
         // `enter` is the skill's spelling, `submit` the cloud planner's.
         await page.waitForTimeout(300);
+        // LAW (Enter ends the close shot, founder 2026-09-27, bite 1117): the
+        // field shot ends the moment BEFORE Enter — typing end plus the
+        // breath above — never after the navigation waits. What Enter
+        // reveals is framed on its own, below.
+        const enterAt = t();
+        rec.enter_at = enterAt;
+        if (!typeWide) pushShot(userShotBox(step, box), Math.max(shotStart, arrivalT - 0.3), enterAt, step.label ?? "type", { n: rec.n, glide: glideWin });
         const urlBefore = page.url();
         await page.keyboard.press("Enter");
         // A submit usually navigates: re-arm the presenter layer on the new
@@ -1037,9 +1127,38 @@ try {
           await applyHideCss();
           await page.evaluate(([a, b]) => window.__recSetCursor?.(a, b), [x, y]);
         }
+        // LAW (what Enter revealed is a WIDE shot): a new URL or a page that
+        // changed substantially is a landing — full frame from Enter + 0.35 s
+        // to the end of the beat. A step framed wide is already wide. An
+        // overlay that opened without the page changing (Enter opened a
+        // dialog) is a revealed close shot, as after a click. `reveals:
+        // false` keeps the camera where it is.
+        if (!typeWide && step.reveals !== false) {
+          await page.waitForTimeout(250);
+          const sigAfter = await pageSignature();
+          const navigated = page.url() !== urlBefore;
+          if (navigated || pageChanged(sigBefore, sigAfter)) {
+            rec.landed = { url: page.url(), navigated, heading: sigAfter?.heading ?? null };
+            wideAfter = { tStart: enterAt + 0.35, label: `${step.label ?? "type"}, result`, extra: { n: rec.n, revealed: true } };
+            process.stdout.write(`landing: step ${rec.n} Enter ${navigated ? "changed the URL" : "changed the page"} — framed wide\n`);
+          } else {
+            const opened = await revealedBox(step);
+            if (opened) {
+              rec.revealed = {
+                x: Math.round(opened.x / SUPERSAMPLE), y: Math.round(opened.y / SUPERSAMPLE),
+                w: Math.round(opened.width / SUPERSAMPLE), h: Math.round(opened.height / SUPERSAMPLE),
+              };
+              pushShot(opened, enterAt + 0.35, t() + 0.3, `${step.label ?? "type"}, result`, { n: rec.n, revealed: true });
+            }
+          }
+        }
+        if (typeWide) wideAfter = { tStart: Math.max(shotStart, arrivalT - 0.3), label: step.label ?? "type", extra: { n: rec.n } };
+      } else if (typeWide) {
+        wideAfter = { tStart: Math.max(shotStart, arrivalT - 0.3), label: step.label ?? "type", extra: { n: rec.n } };
+      } else {
+        // One shot: the field, from arrival through the typing.
+        pushShot(userShotBox(step, box), Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label ?? "type", { n: rec.n, glide: glideWin });
       }
-      // One shot: the field, from arrival through the typing.
-      pushShot(userShotBox(step, box), Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label ?? "type", { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
       currentCursor = await cursorUnderPoint();
       pushMouse("move", cx, cy);
       await page.waitForTimeout(ms(step.after, DEFAULT_CLICK_AFTER));
@@ -1057,6 +1176,12 @@ try {
       if (elapsed < need) await page.waitForTimeout(Math.round((need - elapsed) * 1000));
     }
     rec.t_end = t();
+    // The wide shot spans the whole beat, narration hold included.
+    if (wideAfter) {
+      pushWide(wideAfter.tStart, rec.t_end, wideAfter.label, wideAfter.extra);
+      rec.wide = true;
+      wideAfter = null;
+    }
     manifest.steps.push(rec);
   }
   // Closing beat so the last action breathes before the cut ends.
