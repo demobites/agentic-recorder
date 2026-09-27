@@ -149,6 +149,125 @@ export async function waitForDecision({ base, apiKey, stagingId, pageUrl, delive
   return { exitCode: 0, status: "completed", biteId: approvedBiteId, studioUrl: finalStudioUrl };
 }
 
+// ── RE-TAKE: wait for the NEW version, not the bite ────────────────────────
+// A re-take (`upload.mjs --retake-of <biteId>`) lands INSIDE a bite that is
+// already `completed`: the server ingests the new recording as a new
+// uploaded_videos row + a 'processing' recipe row, and finalize's atomic swap
+// repoints the bite and flips that row to 'live'. The bite's status never
+// leaves `completed`, so waitForDecision returned on its first poll and
+// printed the PREVIOUS version's receipt (bite 1110 read 45.1s where the new
+// take was 44.6s, 2026-09-27). The marker that moves exactly at the swap and
+// that a recorder key can read is the LIVE recipe (GET /api/recorder/recipe):
+// after the swap its manifest is the one this take staged. The ingest
+// rewrites only steps[].narration.text (the bite's current lines), so the
+// manifest's duration and step windows survive verbatim and identify THIS
+// take. When the status route ever reports the bite's video id
+// (`videoId`), it is compared to the delivery's videoId first.
+
+/** What a staged manifest leaves on the live recipe: duration + step windows. */
+export function manifestFingerprint(manifest) {
+  if (!manifest || typeof manifest !== "object") return null;
+  const steps = Array.isArray(manifest.steps) ? manifest.steps : [];
+  if (!Number.isFinite(Number(manifest.duration)) && steps.length === 0) return null;
+  return JSON.stringify({
+    d: manifest.duration ?? null,
+    s: steps.map((s, i) => [s?.n ?? i + 1, s?.t_start ?? null, s?.t_end ?? null]),
+  });
+}
+
+/** The live recipe's fingerprint as the server sees it now, or null when it cannot be read. */
+export async function readLiveRecipeFingerprint({ base, apiKey, biteId }) {
+  try {
+    const res = await fetch(`${base}/api/recorder/recipe?biteId=${encodeURIComponent(biteId)}`, { headers: { Authorization: `Bearer ${apiKey}` } });
+    if (!res.ok) return null;
+    const recipe = await res.json().catch(() => null);
+    return manifestFingerprint(recipe?.manifest);
+  } catch { return null; }
+}
+
+/** GET /api/recorder/status for a bite, or null when it cannot be read. */
+export async function readBiteStatus({ base, apiKey, biteId }) {
+  try {
+    const res = await fetch(`${base}/api/recorder/status?biteId=${encodeURIComponent(biteId)}`, { headers: { Authorization: `Bearer ${apiKey}` } });
+    if (!res.ok) return null;
+    return await res.json().catch(() => null);
+  } catch { return null; }
+}
+
+/** The numbers the receipt prints; two equal reads in a row mean the post-swap manifest application has settled. */
+function receiptKey(st) {
+  return st ? JSON.stringify([st.status, st.durationSec ?? null, st.zooms ?? null, st.narrationTotal ?? null, st.narrationReady ?? null, st.title ?? null]) : null;
+}
+
+/** Wait until the re-take is the bite's live recording, then print ITS receipt.
+ *  `manifest` is the staged wire manifest, `before` the live fingerprint read
+ *  BEFORE staging (null when unknown), `videoId` the delivery's new video id.
+ *  Returns { exitCode, status, biteId, studioUrl } and never throws. */
+export async function waitForRetake({ base, apiKey, biteId, videoId = null, manifest = null, before = null, pageUrl, studioUrl = null, timeoutMs = 30 * 60 * 1000, pollMs = 4000, settleMs = 30 * 1000 }) {
+  const ours = manifestFingerprint(manifest);
+  if (ours && before && ours === before) {
+    console.error("Note: the bite's live recording already carries this take's manifest; the receipt below may describe it rather than a newer version.");
+  }
+  const deadline = Date.now() + timeoutMs;
+  let landed = false;
+  let how = null;
+  process.stdout.write(`Waiting for the new recording to land in bite ${biteId}`);
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, pollMs));
+    const st = await readBiteStatus({ base, apiKey, biteId });
+    if (st?.status === "failed") {
+      process.stdout.write("\n");
+      console.error(`The pipeline FAILED while re-taking bite ${biteId}. The bite keeps its previous recording. Do not hand over any link — investigate.`);
+      return { exitCode: 1, status: "failed", biteId, studioUrl: null };
+    }
+    // 1. The server names the bite's video: exact.
+    if (videoId && st && Number.isFinite(Number(st.videoId))) {
+      if (Number(st.videoId) === Number(videoId)) { landed = true; how = "video"; break; }
+      process.stdout.write("."); continue;
+    }
+    // 2. The live recipe carries this take's manifest: exact. Or it moved
+    //    away from what was live before staging: this take, or a newer one.
+    const fp = await readLiveRecipeFingerprint({ base, apiKey, biteId });
+    if (fp && ours && fp === ours) { landed = true; how = "recipe"; break; }
+    if (fp && before && fp !== before) { landed = true; how = "moved"; break; }
+    process.stdout.write(".");
+  }
+  process.stdout.write("\n");
+  if (!landed) {
+    console.error(`The new recording has not landed in bite ${biteId} within the wait window; the bite still plays its previous version. No receipt for the new one yet — watch it on your Demos grid: ${pageUrl}\n(wait again later with: node scripts/status.mjs <takeDir>)`);
+    return { exitCode: 1, status: "delivered", biteId, studioUrl: null };
+  }
+  console.log(`New recording landed in bite ${biteId}${how === "moved" ? " (the live recording changed after staging)" : ""}.`);
+
+  // The swap is followed by the manifest application (camera shots, narration
+  // rows) on the new version; read until the numbers hold still.
+  let last = await readBiteStatus({ base, apiKey, biteId });
+  const settleDeadline = Date.now() + settleMs;
+  let prevKey = receiptKey(last);
+  while (Date.now() < settleDeadline) {
+    await new Promise((r) => setTimeout(r, Math.min(pollMs, 3000)));
+    const st = await readBiteStatus({ base, apiKey, biteId });
+    const key = receiptKey(st);
+    if (st && key === prevKey && st.status === "completed" && (st.narrationTotal ?? 0) === (st.narrationReady ?? 0)) { last = st; break; }
+    if (st) { last = st; prevKey = key; }
+  }
+  if (last && last.status === "completed") {
+    console.log(
+      `Ready (new recording): "${last.title}" — ${last.durationSec ? last.durationSec.toFixed(1) + "s, " : ""}` +
+      `${last.narrationReady}/${last.narrationTotal} narration segments with audio, ${last.zooms} camera shots`,
+    );
+    if (last.narrationTotal === 0) console.error("WARNING: no narration segments landed. The voice will be silent.");
+    else if (last.narrationReady < last.narrationTotal) console.error(`WARNING: ${last.narrationTotal - last.narrationReady} segment(s) have no audio behind them.`);
+    if (last.zooms === 0) console.error("WARNING: no camera shots landed.");
+  } else {
+    console.error(`The new recording landed but the status door did not answer with a completed bite${last?.status ? ` (${last.status})` : ""}. Watch it here: ${pageUrl}`);
+    return { exitCode: 1, status: last?.status ?? "unknown", biteId, studioUrl: null };
+  }
+  const finalStudioUrl = studioUrl ? new URL(studioUrl, base).toString() : null;
+  if (finalStudioUrl) console.log(`Studio: ${finalStudioUrl}`);
+  return { exitCode: 0, status: "completed", biteId, studioUrl: finalStudioUrl };
+}
+
 /** One look, no waiting: the staged take's current status as the server sees it. */
 export async function peekStaged({ base, apiKey, stagingId }) {
   const res = await fetch(`${base}/api/recorder/stage?id=${encodeURIComponent(stagingId)}`, { headers: { Authorization: `Bearer ${apiKey}` } });

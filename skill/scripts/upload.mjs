@@ -214,6 +214,11 @@ if (attempt) {
   } catch (e) { console.error(`attempt event "uploading" failed: ${e.message} (continuing)`); }
 }
 const previewSizeBytes = fs.statSync(cleanPath).size;
+const { deliverStaged, waitForDecision, waitForRetake, readLiveRecipeFingerprint, gridUrl, waitingLine } = await import("./stage-wait.mjs");
+// RE-TAKE receipt (2026-09-27): the bite stays `completed` while the new
+// version is ingested, so the wait must watch the version, not the bite. The
+// live recipe's fingerprint BEFORE staging is the baseline it must move from.
+const retakeBefore = retakeOfBiteId ? await readLiveRecipeFingerprint({ base, apiKey: cfg.api_key, biteId: retakeOfBiteId }) : null;
 let stageRes;
 try {
   stageRes = await fetch(`${base}/api/recorder/stage`, {
@@ -270,7 +275,6 @@ await putS3(uploadUrl, "application/zip", zipPath, "ZIP");
 await putS3(previewUploadUrl, "video/mp4", cleanPath, "Preview");
 
 // ── delivery: EVERY take becomes a bite by itself ─────────────────────────
-const { deliverStaged, waitForDecision, gridUrl, waitingLine } = await import("./stage-wait.mjs");
 const delivery = await deliverStaged({ base, apiKey: cfg.api_key, stagingId, template: uploadedTemplate });
 const grid = gridUrl(base, delivery.dashboardUrl);
 // The staging id used to be printed only; a batch resumes from disk, so it is
@@ -286,6 +290,7 @@ try {
     biteId: delivery.biteId ?? null, videoId: delivery.videoId ?? null, studioUrl: delivery.studioUrl ? new URL(delivery.studioUrl, base).toString() : null,
     queued: delivery.queued ?? null, pending: delivery.pending ?? null, deliveryError: delivery.error ?? null,
     api: uploadedTemplate ? { uploaded: uploadedTemplate } : null, at: new Date().toISOString(),
+    retakeOfBiteId: retakeOfBiteId ?? null, retakeBefore,
   }, null, 2) + "\n");
 } catch (e) { console.error(`staged.json not written: ${e.message}`); }
 
@@ -304,9 +309,12 @@ function openGrid() {
 if (delivery.delivered) {
   console.log(`Delivered. Watch it come in: ${grid}`);
   openGrid();
-  if (stageOnly) { console.log(`Wait for the bite to finish later with: node scripts/status.mjs ${dir}`); process.exit(0); }
+  if (stageOnly) { console.log(`Wait for the ${retakeOfBiteId ? "new recording" : "bite"} to finish later with: node scripts/status.mjs ${dir}`); process.exit(0); }
   // LAW (founder 2026-08-08): no studio link before the bite is completed.
-  const outcome = await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl: grid, delivered: true });
+  // A re-take's bite is completed already: wait for the NEW version instead.
+  const outcome = retakeOfBiteId
+    ? await waitForRetake({ base, apiKey: cfg.api_key, biteId: retakeOfBiteId, videoId: delivery.videoId ?? null, manifest, before: retakeBefore, pageUrl: grid, studioUrl: delivery.studioUrl ?? null })
+    : await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl: grid, delivered: true });
   process.exit(outcome.exitCode);
 }
 if (delivery.waiting) {

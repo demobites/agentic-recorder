@@ -12,7 +12,7 @@
 // same law as upload.mjs: no studio link before the bite is completed.
 import fs from "node:fs";
 import path from "node:path";
-import { waitForDecision, peekStaged, deliverStaged, gridUrl, formatResetDate, waitingLine } from "./stage-wait.mjs";
+import { waitForDecision, waitForRetake, peekStaged, deliverStaged, gridUrl, formatResetDate, waitingLine } from "./stage-wait.mjs";
 
 const args = process.argv.slice(2);
 const noWait = args.includes("--no-wait");
@@ -63,12 +63,20 @@ if (all) {
 let stagingId = target;
 let pageUrl = null;
 let delivered = false;
+// A re-take (staged with --retake-of) waits for its NEW version, not the bite,
+// which is completed already; upload.mjs left the baseline in staged.json.
+let retake = null;
 if (fs.existsSync(target) && fs.statSync(target).isDirectory()) {
   const staged = readStaged(target);
   if (!staged?.stagingId) { console.error(`${target} has no staged.json. Stage it first: node scripts/upload.mjs ${target} --stage-only`); process.exit(1); }
   stagingId = staged.stagingId;
   pageUrl = staged.dashboardUrl ?? null;
   delivered = staged.delivered === true;
+  if (Number.isInteger(staged.retakeOfBiteId) && staged.retakeOfBiteId > 0) {
+    let manifest = null;
+    try { manifest = JSON.parse(fs.readFileSync(path.join(target, "manifest.demobites.json"), "utf8")); } catch {}
+    retake = { biteId: staged.retakeOfBiteId, before: staged.retakeBefore ?? null, videoId: staged.videoId ?? null, studioUrl: staged.studioUrl ?? null, manifest };
+  }
   // A take whose delivery failed (network, 409) is delivered again here; the
   // server is idempotent. An older server (pending) and a kept take (waiting
   // for minutes, the server holds it) are left alone.
@@ -101,5 +109,7 @@ if (noWait) {
   process.exit(st.ok ? 0 : 1);
 }
 
-const outcome = await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl, delivered });
+const outcome = retake && delivered
+  ? await waitForRetake({ base, apiKey: cfg.api_key, biteId: retake.biteId, videoId: retake.videoId, manifest: retake.manifest, before: retake.before, pageUrl, studioUrl: retake.studioUrl })
+  : await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl, delivered });
 process.exit(outcome.exitCode);
