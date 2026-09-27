@@ -350,7 +350,7 @@ node scripts/retake.mjs <biteId> [--note "what changed"]   # or: npx demobite re
 Laws for a re-take:
 - **Read the note first.** "We moved Export to the header" tells you which step will break before you film.
 - **A step that no longer resolves stops the take at that step.** Look at the live page. If the control moved,
-  fix the selector in the take's `storyboard.json` and run again with `--take <dir>`. If the feature is truly
+  fix the selector in the take's `storyboard.json` and run again with `--take <dir>` (your edited storyboard is kept; `--fresh` replaces it with the server's recipe). If the feature is truly
   gone, DROP that beat AND its narration line, and tell the human plainly: "This capability no longer exists,
   we removed it from the video." Nothing stages until every step resolves.
 - **The narration in the recipe is the ORIGINAL intent.** Do not rewrite it to taste: the server replaces it
