@@ -241,8 +241,15 @@ if (fs.existsSync(cleanPath)) {
     const changedPx = yavg ? (parseFloat(yavg[1]) / 255) * FW * FH * SS * SS : 0;
     return { x: x / SS, y: y / SS, w: w / SS, h: h / SS, changedPx: changedPx / (SS * SS) };
   };
+  // FRAMING (founder 2026-09-27): a step the director framed `close` keeps its
+  // subject box — the page redrawing after an option pick is the landing, and
+  // the wide beat that follows frames it. The storyboard copy in the take dir
+  // is the recipe, so the frame is read from it by step number.
+  let framedClose = new Set();
+  try { const sb = JSON.parse(fs.readFileSync(path.join(dir, "storyboard.json"), "utf8")); (sb.steps ?? []).forEach((s, i) => { if (s?.frame === "close") framedClose.add(i + 1); }); } catch {}
   for (const st of steps) {
     if (!st.click) continue;
+    if (framedClose.has(st.n)) continue;
     const hasRevealedShot = camera.some((c) => c.n === st.n && c.revealed);
     if (hasRevealedShot) continue;
     const control = camera.find((c) => c.n === st.n && !c.revealed);
