@@ -14,6 +14,12 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 
 ## Changelog
 
+### 1.7.1
+
+- The click is always seen close (founder, 2026-09-29). A click whose line is about where it leads (`frame: "wide"`) is still filmed close on the click; the landing after it is the wide shot. Before, the whole step went wide and the viewer saw a tiny cursor click a tiny item (bite 1117: all three clicks at 1.0x, now 3.00x, 3.00x and 2.11x).
+- Every click holds its close shot until 1.1 s after the click. The export finishes a pull-out at the shot's end, so a shot ending 0.3 s after the click started pulling out before it (bite 1110's last click played at 1.12x, now 2.97x).
+- SKILL.md framing: the rule for a click that leads somewhere.
+
 ### 1.7.0 (not yet published)
 
 - Update Radar batches film in four steps (founder ruling 2026-09-26, "the fewest edits before Export and Go live"): List → Refactor + questions → One approval → Film in the background.
