@@ -172,6 +172,7 @@ Framing is our job, never the customer's (founder, 2026-09-27). Decide it from t
 - A field, a button, a menu item, a toggle, a badge, a row = `"close"`.
 - Landing on a page, a report, a chart, a table, a dashboard, a list of results = `"wide"`. So is every line that says "here is", "you see", "you land on", "the whole".
 - A `type` step with `enter` is close for the typing. What Enter reveals is wide by itself; the recorder sees the new page. Do not add a beat for it.
+- A `click` whose line is about where it leads ("pick it, and you are on the right screen") = `"wide"`. The recorder still films the click itself close, then goes wide on the landing from the moment of the click (founder, 2026-09-29). The viewer always sees what was clicked, then where it led.
 - A bare `settle` right after a navigation is wide by itself.
 - Two consecutive wides on the same page are one shot. Write both; the server joins them.
 - Never more than 4 seconds of close on a static screen. When the line runs longer, the beat is wide.

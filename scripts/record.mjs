@@ -427,6 +427,12 @@ const pushWide = (tStart, tEnd, label, extra) =>
 // spans the whole landing — the line "you land on the report" plays over it.
 let wideAfter = null; // { tStart, label, extra }
 const wantsWide = (step) => step.frame === "wide";
+// A click framed wide keeps its close shot this long past the click (founder
+// 2026-09-29, option 2: film the click close, then the landing wide). The
+// export FINISHES a pull-out at the shot's end, so a close shot ending at the
+// click would start pulling out ~0.7 s before it; 1.1 s puts the whole
+// pull-out after the click lands.
+const LANDING_PULL_OUT = 1.1;
 const wantsClose = (step) => step.frame === "close";
 // The page as a signature, so a submit that swaps the page IN PLACE (a search
 // that re-renders a list, a client-side route change) counts as a landing
@@ -967,9 +973,14 @@ try {
           await page.evaluate(([a, b]) => window.__recSetCursor?.(a, b), [cx, cy]);
         }
         // Shot one: the control — beginning near ARRIVAL (see the camera
-        // choreography law above), never spanning the approach glide.
-        if (stepWide) wideAfter = { tStart: Math.max(shotStart, arrivalT - 0.3), label: step.label, extra: { n: rec.n } };
-        else pushShot(userShotBox(step, box), Math.max(shotStart, arrivalT - 0.3), t() + 0.3, step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
+        // choreography law above), never spanning the approach glide. A click
+        // framed `wide` (its line is about where it leads) is STILL filmed
+        // close on the click; the landing after it is the wide shot. Before
+        // 2026-09-29 the whole step went wide from arrival, so the viewer saw
+        // a tiny cursor click a tiny item (bite 1117: all three clicks).
+        const closeEnd = stepWide ? rec.click_at + LANDING_PULL_OUT : t() + 0.3;
+        pushShot(userShotBox(step, box), Math.max(shotStart, arrivalT - 0.3), closeEnd, step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
+        if (stepWide) wideAfter = { tStart: closeEnd, label: `${step.label ?? "click"}, landing`, extra: { n: rec.n, revealed: true } };
         // LAW (press physics, founder 2026-08-09): a press has a down and an
         // up — but the up only exists if the clicked surface is still there.
         // A menu item or modal button that DESTROYS itself on click gets a
