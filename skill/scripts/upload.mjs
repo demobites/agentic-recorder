@@ -1,17 +1,20 @@
 #!/usr/bin/env node
-// DemoBites ending — STAGE the take and hand the word to the product.
+// DemoBites ending — STAGE the take and DELIVER it.
 //
-// The human word lives in the app now (founder, 2026-08-09): this script
-// zips clean.mp4, stages it together with a playable preview MP4, opens the
-// in-app preview page, and POLLS while the human decides there. Approve on
-// that page runs the same ingest as the old machine lane; Discard reports
-// back here so the operator adjusts and refilms. No local review.html for
-// this ending anymore.
+// DIRECT DELIVERY (1.5.0, founder ruling 2026-09-25): this script zips
+// clean.mp4, stages it together with a playable MP4, uploads both, then calls
+// the uploaded door. The take becomes a bite by itself; the person watches it
+// come in on their Demos grid (<base>/demos), never on the preview page. When
+// the account has no recording minutes left the server KEEPS the take and it
+// waits on the same grid, next to the upgrade door.
 //
 // Contracts (fixed, coded verbatim):
 //   PUT  <base>/api/recorder/stage  (Bearer)
 //        { filename, sizeBytes, previewSizeBytes, manifest }
 //     -> { stagingId, uploadUrl, previewUploadUrl, videoKey, previewUrl }
+//   PUT  <base>/api/recorder/stage/<stagingId>/uploaded  (Bearer)   after both uploads, EVERY take
+//     -> 202 { delivered: true, biteId, studioUrl, dashboardUrl }
+//      | 403 { kept: true, waiting: "minutes", resetsAt, dashboardUrl, stagingId }
 //   GET  <base>/api/recorder/stage?id=<stagingId>  (Bearer)
 //     -> { status, biteId, biteUKey, biteStatus, studioUrl }
 //
@@ -31,7 +34,7 @@ if (!dir) {
 }
 // RE-TAKE (2026-09-02): `--retake-of <biteId>` stages this take as a NEW RECORDING
 // of an existing bite instead of a new bite. The server keeps the bite's current
-// narration text, voice, intro/outro and look; the human approves in-app.
+// narration text, voice, intro/outro and look; the take is delivered into it.
 const retakeIdx = process.argv.indexOf("--retake-of");
 const retakeOfBiteId = retakeIdx >= 0 ? Number(process.argv[retakeIdx + 1]) : null;
 if (retakeIdx >= 0 && !(Number.isInteger(retakeOfBiteId) && retakeOfBiteId > 0)) { console.error("--retake-of needs a bite id"); process.exit(2); }
@@ -47,11 +50,9 @@ const retakeNote = noteIdx >= 0 ? String(process.argv[noteIdx + 1] ?? "").trim()
 // opts out. `--stage-only` returns right after the two uploads (the batch
 // waits with status.mjs); `--supersede` replaces a stage already pinned to
 // this attempt (the server refuses a second one otherwise).
-// DELIVERY (1.3.0, founder ruling 2026-09-14): a take with an attempt becomes
-// a bite by itself. After both uploads this script PUTs the delivery route
-// (the claim's api.uploaded, fallback <base>/api/recorder/stage/<id>/uploaded)
-// and prints "delivered: bite <id>". No Approve click, no review queue for
-// brief batches. Free-prompt takes (no attempt) still stage for review.
+// DELIVERY (1.3.0 for brief takes, 1.5.0 for every take): after both uploads
+// this script PUTs the delivery route (the claim's api.uploaded when there is
+// one, fallback <base>/api/recorder/stage/<id>/uploaded). No Approve click.
 const stageOnly = process.argv.includes("--stage-only");
 const supersede = process.argv.includes("--supersede");
 const attemptIdx = process.argv.indexOf("--attempt");
@@ -77,11 +78,16 @@ if (!cfg.api_key || !cfg.base) {
   process.exit(1);
 }
 const base = cfg.base.replace(/\/+$/, "");
-// A delivered take is a bite already; staging it again would make a second one.
+// A delivered take is a bite already, and a kept take waits on the server;
+// staging either again would make a second one.
 try {
   const prev = JSON.parse(fs.readFileSync(path.join(dir, "staged.json"), "utf8"));
   if (prev?.delivered === true && prev.biteId && !supersede) {
     console.error(`${dir} was already delivered as bite ${prev.biteId}. See where it stands: node scripts/status.mjs ${dir}. For a new take of it, stage again with --supersede.`);
+    process.exit(1);
+  }
+  if (prev?.waiting && !supersede) {
+    console.error(`${dir} is already kept in DemoBites, waiting for recording minutes. See where it stands: node scripts/status.mjs ${dir}. For a new take of it, stage again with --supersede.`);
     process.exit(1);
   }
 } catch { /* not staged yet */ }
@@ -193,7 +199,7 @@ if (!zipped) {
 fs.rmSync(staging, { recursive: true, force: true });
 const sizeBytes = fs.statSync(zipPath).size;
 console.log(`take.zip ready (${(sizeBytes / 1024 / 1024).toFixed(1)} MB, ${zipped ? "system zip" : "store method"})`);
-if (retakeOfBiteId) console.log(`Staging as a RE-TAKE of bite ${retakeOfBiteId} — the new recording replaces the current one inside that bite ${attempt ? "by itself once delivered" : "once approved"}.`);
+if (retakeOfBiteId) console.log(`Staging as a RE-TAKE of bite ${retakeOfBiteId} — the new recording replaces the current one inside that bite by itself once delivered.`);
 
 // ── stage ──────────────────────────────────────────────────────────────────
 const authHeaders = { Authorization: `Bearer ${cfg.api_key}`, "Content-Type": "application/json" };
@@ -208,6 +214,11 @@ if (attempt) {
   } catch (e) { console.error(`attempt event "uploading" failed: ${e.message} (continuing)`); }
 }
 const previewSizeBytes = fs.statSync(cleanPath).size;
+const { deliverStaged, waitForDecision, waitForRetake, readLiveRecipeFingerprint, gridUrl, waitingLine } = await import("./stage-wait.mjs");
+// RE-TAKE receipt (2026-09-27): the bite stays `completed` while the new
+// version is ingested, so the wait must watch the version, not the bite. The
+// live recipe's fingerprint BEFORE staging is the baseline it must move from.
+const retakeBefore = retakeOfBiteId ? await readLiveRecipeFingerprint({ base, apiKey: cfg.api_key, biteId: retakeOfBiteId }) : null;
 let stageRes;
 try {
   stageRes = await fetch(`${base}/api/recorder/stage`, {
@@ -228,7 +239,7 @@ if (!stageRes.ok) {
   if (errBody?.error === "quota_exceeded") {
     // Should not happen anymore — staging is quota-free by design. Neutral
     // fallback if an older server answers this way.
-    console.error(`DemoBites declined the stage. Check ${base}/bites and try again.`);
+    console.error(`DemoBites declined the stage. Check ${base}/demos and try again.`);
     process.exit(1);
   }
   if (errBody?.error === "invalid_attempt") {
@@ -236,14 +247,14 @@ if (!stageRes.ok) {
     process.exit(1);
   }
   if (errBody?.error === "attempt_already_staged") {
-    console.error(`This attempt already has a staged take${errBody.stagingId ? ` (${errBody.stagingId})` : ""}. Review that one, or stage again with --supersede to replace it.`);
+    console.error(`This attempt already has a staged take${errBody.stagingId ? ` (${errBody.stagingId})` : ""}. Keep that one, or stage again with --supersede to replace it.`);
     process.exit(1);
   }
   console.error(`Stage failed: ${stageRes.status} ${errBody ? JSON.stringify(errBody) : ""}`);
   process.exit(1);
 }
 const { stagingId, uploadUrl, previewUploadUrl, previewUrl, queueUrl, pendingCount } = await stageRes.json();
-if (!stagingId || !uploadUrl || !previewUploadUrl || !previewUrl) {
+if (!stagingId || !uploadUrl || !previewUploadUrl) {
   console.error("Stage response missing fields.");
   process.exit(1);
 }
@@ -263,68 +274,62 @@ async function putS3(url, contentType, filePath, label) {
 await putS3(uploadUrl, "application/zip", zipPath, "ZIP");
 await putS3(previewUploadUrl, "video/mp4", cleanPath, "Preview");
 
-// ── delivery (brief batches): the take becomes a bite by itself ────────────
-// Only a take carrying an attempt is delivered. Free-prompt takes never call
-// this route, so their flow is unchanged: staged, then the word in the app.
-let delivery = null;
-if (attempt) {
-  const { deliverStaged } = await import("./stage-wait.mjs");
-  delivery = await deliverStaged({ base, apiKey: cfg.api_key, stagingId, template: uploadedTemplate });
-}
+// ── delivery: EVERY take becomes a bite by itself ─────────────────────────
+const delivery = await deliverStaged({ base, apiKey: cfg.api_key, stagingId, template: uploadedTemplate });
+const grid = gridUrl(base, delivery.dashboardUrl);
 // The staging id used to be printed only; a batch resumes from disk, so it is
 // persisted next to the take (status.mjs reads it, and retries a delivery
-// that failed).
-const pageUrl = new URL(previewUrl, base).toString();
+// that failed). previewUrl stays for older readers; the person's page is
+// dashboardUrl, the Demos grid.
+const previewPage = previewUrl ? new URL(previewUrl, base).toString() : null;
 try {
   fs.writeFileSync(path.join(dir, "staged.json"), JSON.stringify({
-    stagingId, previewUrl: pageUrl, queueUrl: queueUrl ? new URL(queueUrl, base).toString() : null,
+    stagingId, previewUrl: previewPage, dashboardUrl: grid, queueUrl: queueUrl ? new URL(queueUrl, base).toString() : null,
     pendingCount: pendingCount ?? null, attemptRef: attempt?.attemptRef ?? null, briefId: attempt?.briefId ?? null,
-    delivered: delivery ? delivery.delivered : null, biteId: delivery?.biteId ?? null, videoId: delivery?.videoId ?? null,
-    queued: delivery?.queued ?? null, pending: delivery?.pending ?? null, deliveryError: delivery?.error ?? null,
+    delivered: delivery.delivered === true, waiting: delivery.waiting ?? null, resetsAt: delivery.resetsAt ?? null,
+    biteId: delivery.biteId ?? null, videoId: delivery.videoId ?? null, studioUrl: delivery.studioUrl ? new URL(delivery.studioUrl, base).toString() : null,
+    queued: delivery.queued ?? null, pending: delivery.pending ?? null, deliveryError: delivery.error ?? null,
     api: uploadedTemplate ? { uploaded: uploadedTemplate } : null, at: new Date().toISOString(),
+    retakeOfBiteId: retakeOfBiteId ?? null, retakeBefore,
   }, null, 2) + "\n");
 } catch (e) { console.error(`staged.json not written: ${e.message}`); }
 
-if (delivery?.delivered) {
-  console.log(`delivered: bite ${delivery.biteId}${delivery.queued ? " (ingest queued)" : ""}. It becomes a bite in DemoBites by itself.\n  ${pageUrl}`);
-  if (stageOnly) { console.log(`Delivered only. Wait for the bite to finish later with: node scripts/status.mjs ${dir}`); process.exit(0); }
-  const { waitForDecision } = await import("./stage-wait.mjs");
-  const outcome = await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl, delivered: true });
-  process.exit(outcome.exitCode);
-}
-if (delivery && !delivery.pending) {
-  console.error(`Staged, but not delivered: ${delivery.error}. The take waits in the review queue:\n  ${pageUrl}\nTry the delivery again later with: node scripts/status.mjs ${dir}`);
-  process.exit(1);
-}
-if (delivery?.pending) console.log("This DemoBites does not deliver by itself yet; the take waits for the word in the app.");
-
-// ── open the in-app preview — the review happens THERE ─────────────────────
-// Batch etiquette (founder, 2026-08-11): when takes are stacked for a later
-// review sprint, auto-opening a tab per take is spam. `--no-open` (or
-// config.open_preview === false) stages silently — the queue pill and the
-// printed URL carry the message. Default stays open: for a single take the
-// opened page IS the consent moment.
-console.log(`Staged. Review and approve in the browser:\n  ${pageUrl}`);
-if (typeof pendingCount === "number" && pendingCount > 1 && queueUrl) {
-  console.log(`${pendingCount} takes are now waiting for review: ${new URL(queueUrl, base).toString()}`);
-}
+// Single take: the grid opens in the browser, the person watches the card
+// come in there. A batch passes --no-open (or config.open_preview === false)
+// and the printed link carries the message.
 const noOpen = process.argv.includes("--no-open") || cfg.open_preview === false;
-if (!noOpen) {
+function openGrid() {
+  if (noOpen) return;
   try {
     const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-    spawnSync(opener, [pageUrl], { stdio: "ignore" });
-  } catch { /* printing the URL above is the fallback */ }
+    spawnSync(opener, [grid], { stdio: "ignore" });
+  } catch { /* the printed link is the fallback */ }
 }
 
-if (stageOnly) {
-  console.log(`Staged only. Wait for the decision later with: node scripts/status.mjs ${dir}`);
+if (delivery.delivered) {
+  console.log(`Delivered. Watch it come in: ${grid}`);
+  openGrid();
+  if (stageOnly) { console.log(`Wait for the ${retakeOfBiteId ? "new recording" : "bite"} to finish later with: node scripts/status.mjs ${dir}`); process.exit(0); }
+  // LAW (founder 2026-08-08): no studio link before the bite is completed.
+  // A re-take's bite is completed already: wait for the NEW version instead.
+  const outcome = retakeOfBiteId
+    ? await waitForRetake({ base, apiKey: cfg.api_key, biteId: retakeOfBiteId, videoId: delivery.videoId ?? null, manifest, before: retakeBefore, pageUrl: grid, studioUrl: delivery.studioUrl ?? null })
+    : await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl: grid, delivered: true });
+  process.exit(outcome.exitCode);
+}
+if (delivery.waiting) {
+  console.log(waitingLine(grid, delivery.resetsAt));
+  openGrid();
   process.exit(0);
 }
-
-// ── poll while the human decides, then until the bite is READY ─────────────
-// Shared with status.mjs (a batch waits there). The law it enforces: never
-// hand a human a studio link before the bite is finished; Approve only
-// STARTS the pipeline.
-const { waitForDecision } = await import("./stage-wait.mjs");
-const outcome = await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl });
-process.exit(outcome.exitCode);
+if (delivery.pending) {
+  // An older DemoBites that does not deliver by itself: the take waits for
+  // the word in the app. Still no preview link as the destination.
+  console.log(`Staged. This DemoBites does not deliver by itself yet; the take waits for the word in the app. Watch it here: ${grid}`);
+  openGrid();
+  if (stageOnly) { console.log(`Wait for it later with: node scripts/status.mjs ${dir}`); process.exit(0); }
+  const outcome = await waitForDecision({ base, apiKey: cfg.api_key, stagingId, pageUrl: grid });
+  process.exit(outcome.exitCode);
+}
+console.error(`Staged, but not delivered: ${delivery.error}. Try the delivery again with: node scripts/status.mjs ${dir}\nYour demos: ${grid}`);
+process.exit(1);

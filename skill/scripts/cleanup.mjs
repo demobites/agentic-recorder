@@ -32,7 +32,8 @@ if (steps.length === 0 && checks.length === 0) {
   process.exit(0);
 }
 
-const profileDir = path.resolve(".recorder", "profile");
+// RECORDER_PROFILE (1.7.0): a batch's parallel takes each prep and clean on their own seeded profile.
+const profileDir = path.resolve(process.env.RECORDER_PROFILE || path.join(".recorder", "profile"));
 const ctx = await chromium.launchPersistentContext(profileDir, { channel: "chrome", headless: true, viewport: { width: 1920, height: 1080 } }).catch(async () =>
   chromium.launchPersistentContext(profileDir, { headless: true, viewport: { width: 1920, height: 1080 } }),
 );

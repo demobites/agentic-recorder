@@ -271,12 +271,22 @@ if (!anchored) {
   }
 }
 
+// A click pairs only with a change inside its CONSEQUENCE WINDOW. Bite 1115
+// (2026-09-27): a click that toggled one small button changed no whole frame,
+// so it was paired with the dialog that opened 5.4 s later; with two clicks
+// the median was that mis-pair and the take was vetoed although the beacon
+// had measured the clock to ~90 ms. A change later than CONSEQUENCE_S is not
+// this click's consequence: the click is unpaired and left out.
+const CONSEQUENCE_S = 1.5;
+// The median can veto a take only from MIN_LATENCY_SAMPLES pairs; fewer are a
+// warning, and a beacon- or anchor-measured clock is never vetoed by it.
+const MIN_LATENCY_SAMPLES = 3;
 const latencies = [];
 for (const c of clicks) {
   const pred = tb.a * c.wall + tb.b;
-  const after = scenes.filter((s) => s >= pred - 0.15);
+  const after = scenes.filter((s) => s >= pred - 0.15 && s <= pred + CONSEQUENCE_S);
   if (after.length === 0) {
-    console.log(`  ${c.label}: predicted ${pred.toFixed(2)}s, no visible change after it`);
+    console.log(`  ${c.label}: predicted ${pred.toFixed(2)}s, no visible change within ${CONSEQUENCE_S}s (unpaired)`);
     continue;
   }
   const nearest = after.reduce((a, b) => (Math.abs(a - pred) <= Math.abs(b - pred) ? a : b));
@@ -285,7 +295,11 @@ for (const c of clicks) {
 }
 const sorted = [...latencies].sort((a, b) => a - b);
 const median = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
-if (!anchored && (median < -0.15 || median > 0.9)) {
+const clockMeasured = anchored || beaconAnchored;
+if (!clockMeasured && sorted.length < MIN_LATENCY_SAMPLES && (median < -0.15 || median > 0.9)) {
+  console.log(`WARNING: median click latency ${median.toFixed(3)}s from only ${sorted.length} paired click(s) — too few to veto the take; the clock stays an estimate. Judge the take on feel.`);
+}
+if (!clockMeasured && sorted.length >= MIN_LATENCY_SAMPLES && (median < -0.15 || median > 0.9)) {
   console.error(
     `VERIFY FAILED: median click latency ${median.toFixed(3)}s is outside [-0.15, +0.9]. ` +
     "The stamped timebase looks wrong for this take. Do not upload — investigate record_from.",
