@@ -96,7 +96,7 @@ function printBatch(data) {
   const { batch, briefs } = data;
   const src = batch?.source ? `${batch.source.repo}#${batch.source.prNumber}` : "";
   console.log(`Batch ${batch?.id ?? "?"}  ${src}  target ${batch?.target?.url ?? "?"}${batch?.target?.environment ? ` (${batch.target.environment})` : ""}`);
-  console.log(`${briefs.length} brief${briefs.length === 1 ? "" : "s"}, each at most 90 seconds. One storyboard approval per brief.`);
+  console.log(`${briefs.length} brief${briefs.length === 1 ? "" : "s"}, each at most 180 seconds (3 minutes). One storyboard approval per brief.`);
   for (const b of briefs) {
     const att = b.attempt ? ` · attempt ${b.attempt.ref} (${b.attempt.state})` : "";
     console.log(`\n  ${b.briefId}  r${b.revision}  ${b.status}${att}\n  ${b.title}\n  audience: ${b.audience}\n  outcome: ${b.outcome}${b.estimatedDurationSec ? `\n  about ${b.estimatedDurationSec}s` : ""}`);
@@ -138,7 +138,7 @@ function printRadar(data, slug) {
   // A radar batch has no target address: the agent films where the code
   // already runs (the Record stage says so); print the target only when set.
   console.log(`Batch ${batch?.id ?? "?"}${batch?.target?.url ? `  target ${batch.target.url}${batch.target.environment ? ` (${batch.target.environment})` : ""}` : ""}`);
-  console.log(`${briefs.length} brief${briefs.length === 1 ? "" : "s"}, each at most ${batch?.rules?.maxSeconds ?? 90} seconds, in this order:\n`);
+  console.log(`${briefs.length} brief${briefs.length === 1 ? "" : "s"}, each at most ${batch?.rules?.maxSeconds ?? 180} seconds, in this order:\n`);
   const questions = [];
   order.forEach((b, i) => {
     const pos = String(i + 1).padStart(2, " ");
@@ -178,7 +178,7 @@ function writeRadarBundle(slug, data) {
  * The limits are the server's (a refine that breaks one answers 400
  * invalid_refine): title ≤ 80, audience ≤ 60, outcome ≤ 200, flowIntent 2..8
  * lines ≤ 120 each, prerequisites/exclusions ≤ 6 lines ≤ 160 each,
- * estimatedDurationSec 15..90. They are checked here first, with the field
+ * estimatedDurationSec 15..180 (3 minutes, founder 2026-10-10). They are checked here first, with the field
  * named, so the agent trims before posting instead of reading a 400. */
 const CONTENT_LIMITS = { title: 80, audience: 60, outcome: 200 };
 const LIST_LIMITS = { flowIntent: { min: 2, max: 8, line: 120 }, prerequisites: { min: 0, max: 6, line: 160 }, exclusions: { min: 0, max: 6, line: 160 } };
@@ -206,7 +206,7 @@ function refineProblems(c) {
     v.forEach((line, i) => { if (typeof line !== "string" || !line.trim()) out.push(`${k}[${i}]: an empty line`); else if (line.trim().length > lim.line) out.push(`${k}[${i}]: ${line.trim().length} characters, the limit is ${lim.line}`); });
   }
   const d = c.estimatedDurationSec;
-  if (!Number.isInteger(d) || d < 15 || d > 90) out.push(`estimatedDurationSec: ${JSON.stringify(d)}, must be a whole number of seconds 15..90`);
+  if (!Number.isInteger(d) || d < 15 || d > 180) out.push(`estimatedDurationSec: ${JSON.stringify(d)}, must be a whole number of seconds 15..90`);
   return out;
 }
 

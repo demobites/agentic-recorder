@@ -152,12 +152,16 @@ const dur = execFileSync(FFPROBE(), [
   "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", clean,
 ]).toString().trim();
 const duration = parseFloat(dur);
-// LAW (founder): a Bite is capped at 90 seconds by product concept. A take
-// that cuts longer than that must not proceed to staging — the story needs a
-// SPLIT, not a trim. Fail loudly here, before any upload machinery runs.
-if (duration > 90) {
+// LAW (founder 2026-10-10: 3 minutes, was 90 s since 2026-08-09): a Bite is
+// capped at 180 seconds by product concept — a LIMIT, not a target; the
+// sweet spot stays 30 to 45 s. A take that cuts longer than that must not
+// proceed to staging — the story needs a SPLIT, not a trim. Fail loudly here,
+// before any upload machinery runs. The server refuses the same number
+// (MAX_BITE_SECONDS; GET /api/recorder/limits answers it).
+const MAX_BITE_SECONDS = 180;
+if (duration > MAX_BITE_SECONDS) {
   console.error(
-    `HARD CAP: this take cuts to ${duration.toFixed(1)}s — a Bite is limited to 90 seconds. ` +
+    `HARD CAP: this take cuts to ${duration.toFixed(1)}s — a Bite is limited to 3 minutes. ` +
     "Do not upload. Split the scenario into multiple Bites and refilm."
   );
   process.exit(1);
