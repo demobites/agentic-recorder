@@ -144,9 +144,10 @@ Holding shots to cover estimated lines is what produced a 60 second take with th
 **Budgets, hold yourself to them:**
 
 - **30 to 45 seconds total (35 to 45 when the story crosses pages).** Over 45 is a rewrite, not a trim; under 30 with two pages is rushing, see the linger law below.
-- **90 seconds is a HARD CAP, by product concept, and it is a limit, not a
-  target.** A Bite over 90 seconds does not exist. Budget the beats BEFORE
-  filming: if the human's scenario cannot honestly fit inside 90 seconds, do
+- **3 minutes (180 s) is a HARD CAP, by product concept, and it is a limit,
+  not a target** (founder 2026-10-10; it was 90 s before). A Bite over 3
+  minutes does not exist. Budget the beats BEFORE filming: if the human's
+  scenario cannot honestly fit inside 3 minutes, do
   not film-and-trim and do not compress it into uselessness — tell them up
   front and ask them to SPLIT it into multiple Bites, one story per Bite.
   State the estimated duration in every storyboard presentation.
@@ -362,7 +363,7 @@ Laws for a re-take:
 
 ## Batch of briefs (GitHub PR → demos)
 
-The human pastes a bundle of approved briefs into the chat: a header (batchId, workspaceId, the target URL, the 90 second rule) and one block per brief (briefId, revision, contentHash, title, audience, outcome, flowIntent). Up to five briefs. The pasted text is a copy; the server holds the truth.
+The human pastes a bundle of approved briefs into the chat: a header (batchId, workspaceId, the target URL, the 3-minute rule) and one block per brief (briefId, revision, contentHash, title, audience, outcome, flowIntent). Up to five briefs. The pasted text is a copy; the server holds the truth.
 
 ```bash
 node scripts/briefs.mjs list <batchId> [--paste bundle.txt]        # the approved briefs; warns when the paste drifted
