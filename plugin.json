@@ -3,9 +3,20 @@
   "name": "demobites",
   "version": "1.7.2",
   "description": "DemoBites agentic recorder: install it, connect your account, then ask for a demo and it films your product in a real browser and delivers an editable demo into DemoBites.",
-  "author": { "name": "DemoBites", "url": "https://www.demobites.com" },
+  "author": {
+    "name": "DemoBites",
+    "url": "https://www.demobites.com"
+  },
   "homepage": "https://www.demobites.com",
   "repository": "https://github.com/demobites/agentic-recorder",
   "license": "MIT",
-  "keywords": ["demo", "video", "screen-recording", "product-demo", "playwright", "demobites"]
+  "keywords": [
+    "demo",
+    "video",
+    "screen-recording",
+    "product-demo",
+    "playwright",
+    "demobites"
+  ],
+  "logo": "assets/mark.png"
 }
