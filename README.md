@@ -40,7 +40,7 @@ Then `/demobites:record`, `/demobites:login`, `/demobites:logout` — or just as
 
 ```
 codex plugin marketplace add demobites/agentic-recorder
-codex plugin add demobites
+codex plugin add demobites@demobites
 $demobites-setup
 ```
 
