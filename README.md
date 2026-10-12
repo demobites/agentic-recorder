@@ -22,6 +22,35 @@ An illustrated walkthrough of the flow, with waiting time compressed.
 
 ## Start with your own agent
 
+### Install as a plugin (Claude Code, Codex, Cursor)
+
+The recorder ships as a plugin of this repository. Install it once, then run its setup skill: it installs everything (Playwright, ffmpeg, Chromium when needed) and connects your account with one approval in your browser.
+
+**Claude Code**
+
+```
+/plugin marketplace add demobites/agentic-recorder
+/plugin install demobites@demobites
+/demobites:setup
+```
+
+Then `/demobites:record`, `/demobites:login`, `/demobites:logout` — or just ask: "record a demo of the new billing page".
+
+**Codex**
+
+```
+codex plugin marketplace add demobites/agentic-recorder
+codex plugin add demobites
+$demobites-setup
+```
+
+**Cursor**
+
+Install **DemoBites** from the Cursor marketplace (Customize → Plugins), then `/demobites-setup`. Teams can also add this repository as a team marketplace.
+
+### Or one command, any agent
+
+
 You need a coding agent that can read skill instructions, run terminal commands, and control a local browser. A browser-only chat session cannot run this local workflow.
 
 Before installing:
