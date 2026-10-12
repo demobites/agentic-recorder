@@ -34,3 +34,7 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 - No recording minutes left: the server keeps the take (`403 { kept: true, waiting: "minutes", resetsAt }`) and the script prints `Kept. The take is waiting for recording minutes (back on <date>). Watch it here: <base>/demos`. `status.mjs` shows such a take as "waiting for recording minutes".
 - `staged.json` adds `dashboardUrl`, `waiting`, `resetsAt` and `studioUrl`; `previewUrl` stays for older readers.
 - README no longer presents the standalone recorder as a way to use the product without an account.
+
+## The plugin rides with the package
+
+`plugin.json`, `.claude-plugin/`, `.agents/plugins/`, `.cursor-plugin/` and the two skill trees (`plugins/claude/skills/*` for Claude Code, `skills/demobites-*` for Codex and Cursor — same bodies, the agents' own invocation spelling) are the plugin. Every release bumps their `version` to the package version (the release script does not do it yet — bump by hand with the package). The plugin is published the moment `main` moves: marketplaces are read from git, no store, no review (Cursor's public marketplace is the one exception: cursor.com/marketplace/publish).

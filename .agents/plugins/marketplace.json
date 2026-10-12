@@ -1,0 +1,12 @@
+{
+  "name": "demobites",
+  "plugins": [
+    {
+      "name": "demobites",
+      "source": "./",
+      "description": "Install the DemoBites agentic recorder and connect your account; then ask for a demo and it films your product.",
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "demobites",
+  "owner": { "name": "DemoBites", "url": "https://www.demobites.com" },
+  "plugins": [
+    { "name": "demobites", "source": "." }
+  ]
+}
