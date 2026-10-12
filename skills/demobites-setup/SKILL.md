@@ -35,9 +35,15 @@ Outcomes are answers, never obstacles:
 - denied → "The link was not approved, nothing was connected." Full stop; never re-run login after a denial.
 - expired / unreachable → say what happened, offer a fresh link, WAIT.
 
-## 3. Management (optional, automatic)
+## 3. Management MCP (right after the approval)
 
-When the project is connected, `npx demobite@latest` also prints the DemoBites management MCP (URL + header) to add under your agent's MCP settings, so the person can also ask for releases, languages and exports by sentence. Nothing to do here.
+Once connected, run:
+
+```bash
+npx demobite mcp
+```
+
+It prints the DemoBites management MCP (URL + `Authorization: Bearer …` header). Add it under the agent's MCP settings as a Streamable HTTP server (Codex: the MCP config; Cursor: Settings → MCP) and tell the person it is there, so they can also ask for releases, languages and exports by sentence.
 
 ## What this skill never does
 
