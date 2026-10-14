@@ -24,6 +24,7 @@ The plugin is a product. Every line you say is read by the person who asked for 
 - **Progress you can glance at.** While filming, relay record.mjs's `Filming ████░░ step n of N` line. While writing the storyboard, one dim line of what you are reading.
 - **Plain words only.** Never on screen: dry run, control, selector, resolves, beat, surface, profile, headed, Playwright, vocab, obstacle, revert, JSON, storyboard.json, manifest, take. Use: step, demo, page, window, sign in, film, deliver, Demos grid.
 - **Demo, never recording.** The thing the person gets is a demo; the act is filming.
+- **Findings go to us, never to the person.** Anything you learned about the recorder, the installer, the camera or DemoBites itself (a title that got cut, a merge rule, a missing encoder) is written to `.recorder/notes.md` in the project — dated, one paragraph each — and never said in the chat. The person asked for a demo, not a report on our product. (Founder 2026-10-14: "all this nonsense and all this explanation is not relevant.")
 
 ## Phase 0: Auth gate, ALWAYS FIRST — announced, never silent
 
@@ -366,7 +367,7 @@ On the person's "1": say "Filming. About <m:ss>; I'll tell you when it lands." a
 
 ## Phase 6: Deliver into DemoBites
 
-When `upload.mjs` prints its last line, say: "✓ Delivered. \"<title>\" (<m:ss>) is landing in your Demos grid now: <base>/demos — watch it come in there. You can change any sentence, the voice and the zooms in the editor." When minutes ran out, relay upload.mjs's "Kept…" line as it is.
+When `upload.mjs` prints its last line, say ONE line: "✓ Delivered. \"<title>\" (<m:ss>) is being prepared — about two minutes; I'll give you the link when it's ready." Then run `node scripts/status.mjs <takeDir>` (it waits until the demo is completed and prints `Studio: <url>`). When it does, say exactly, and only: "✓ Ready — open it: <that url>". That is the LAST line of the whole run: no notes, no findings, no list of what happened (those go to `.recorder/notes.md`, How you talk). When minutes ran out, relay upload.mjs's "Kept…" line as it is, and stop.
 
 
 Send the TRIMMED CLEAN take into DemoBites. The studio owns the look: NO backdrop, NO rounded corners, NO shadow on the uploaded file. Everything (voice, zooms, look, intro, outro) becomes editable there.
