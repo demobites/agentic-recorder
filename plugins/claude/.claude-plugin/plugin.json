@@ -1,6 +1,6 @@
 {
   "name": "demobites",
-  "version": "1.7.5",
+  "version": "1.7.6",
   "description": "DemoBites for Claude Code: /demobites:setup installs the agentic recorder and connects your account; then ask for a demo in plain words and it films your product in a real browser and delivers an editable demo into DemoBites.",
   "author": { "name": "DemoBites", "url": "https://www.demobites.com" },
   "homepage": "https://www.demobites.com",
