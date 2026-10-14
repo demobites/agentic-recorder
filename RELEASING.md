@@ -14,6 +14,14 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 
 ## Changelog
 
+### 1.8.0
+
+- **How you talk** (founder 2026-10-14, after reading "the dry run passed: every control on the first row resolves"): a section at the top of the recorder skill that governs every line — say what happens next first; the sign-in window within seconds; one "⏳ Waiting for you —" line whenever we stop; one question with numbered answers; results, not work; plain words (a banned list); demo, never recording.
+- **Phase 1a — the address and the sign-in, in the first reply.** The agent works out the address, `signin.mjs --check <url>` reads the ledger `.recorder/signins.json`; a known address asks nothing; a new one gets one yes/no and, on yes, the window at once — the research runs while the person signs in. A successful sign-in writes the ledger.
+- **`scripts/storyboard.mjs`** prints the storyboard as one box (number, time, one line per step, the total) and, on request, every step's narration word for word. Phase 3 presents the box and ONE question: 1 film it · 2 change something · 3 show every word. The storyboard is never skipped (law kept).
+- **record.mjs** prints `Filming ████░░ step n of N` for the person.
+- Plugin manifests and the package at 1.8.0.
+
 ### 1.7.6
 
 - `scripts/signin.mjs` — the ONE way the recorder opens the target app's sign-in window (Phase 2): the camera's own launch (real Chrome, the recorder profile, `--disable-blink-features=AutomationControlled`, no `--enable-automation`), the wait for the sign-in, the close. Measured on app.demobites.com: an improvised window has `navigator.webdriver=true` and Cloudflare Turnstile never passes; this script has it `false` and the check passes. Correction to 1.7.5's note: the founder's test failed in a sign-in window the agent improvised for the recorder's Phase 2, not through a browser tool; the 1.7.5 rule stays (it is right on its own), this is the actual fix. `--probe` loads a login page and reports the bot-check state without a human.

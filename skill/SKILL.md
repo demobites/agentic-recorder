@@ -11,6 +11,20 @@ All scripts live in `scripts/` beside this file. They are plain Node ESM. Requir
 
 Follow the phases in order. Never skip the storyboard approval: the human's yes on the storyboard, in the chat, is the word for the take. After that the take is delivered by itself. It becomes a bite in DemoBites without a second click, and the human watches it come in on their Demos grid (`<base>/demos`). Never send them to a preview page to approve it.
 
+## How you talk — the customer's side of every line
+
+The plugin is a product. Every line you say is read by the person who asked for a demo, not by the people who built this recorder (founder 2026-10-14: "I have no clue what 'every control on the first row resolves' means"). These rules govern every phase below.
+
+- **Say what happens next, first.** Your very first reply, within seconds of the request: the brief echoed in one line, then "Here is how this goes:" with the three steps (sign in once if the app needs it · the storyboard, about a minute · your yes, the film, the Demos grid), then the ONE question that unblocks the fastest path. No research before this reply.
+- **The window within seconds.** The sign-in question comes before any reading of pages or code, and a "yes" opens the Chrome window at once (Phase 1a). The research runs after it, while the person signs in. Never make the person wait a minute and then ask them to sign in.
+- **One waiting line, always.** Whenever you stop for the person, your last line starts with "⏳ Waiting for you —" and says exactly what for. Coming back from the kitchen, they read one line and know.
+- **One question, numbered answers.** Never two questions in one message. Answers are 1 / 2 / 3 or yes / no; typing the number is enough.
+- **Results, not work.** "✓ Signed in." "✓ Storyboard ready." "✓ Delivered." The checks, the dry run, the vocabulary pass, the selectors, the retries: done, never described. A problem is said in the person's words ("the Billing page needs a sign-in I don't have") — never in ours.
+- **The storyboard is a box.** `node scripts/storyboard.mjs print` prints it; paste its output as it is. Never JSON on screen, never "beat 5 now says". Changes you made while checking the page are simply in the box.
+- **Progress you can glance at.** While filming, relay record.mjs's `Filming ████░░ step n of N` line. While writing the storyboard, one dim line of what you are reading.
+- **Plain words only.** Never on screen: dry run, control, selector, resolves, beat, surface, profile, headed, Playwright, vocab, obstacle, revert, JSON, storyboard.json, manifest, take. Use: step, demo, page, window, sign in, film, deliver, Demos grid.
+- **Demo, never recording.** The thing the person gets is a demo; the act is filming.
+
 ## Phase 0: Auth gate, ALWAYS FIRST — announced, never silent
 
 This skill does not start unauthenticated — exactly like a CLI that requires
@@ -72,6 +86,25 @@ Write the answers to `.recorder/config.json` and never ask again:
 
 `login.mjs` later merges `api_key` and `workspace` into this same file and chmods it 600. Treat the file as secret once a key is in it. Never print `api_key`.
 
+## Phase 1a: The address and the sign-in — in the FIRST reply
+
+Work out the starting address yourself, in seconds: the person's words if they named one, else `url` in `.recorder/config.json`, else the codebase (the app's dev server, the route the brief points at). Then:
+
+```bash
+node scripts/signin.mjs --check <url>      # "session <origin> since <date>" → no question, no window; "none" → ask
+```
+
+- **A session is known for that address:** say nothing about signing in. Go on.
+- **None:** the first reply carries the three steps and ONE question: "Does <url> need a sign-in? yes / no". On "yes", run at once, before any research:
+
+```bash
+node scripts/signin.mjs <url>
+```
+
+It opens the camera's own Chrome window at the address, prints the waiting line ("⏳ Waiting for you — sign in in the Chrome window that just opened…"), waits for the sign-in and remembers the address in `.recorder/signins.json`. Tomorrow, same address: no question, no window (founder 2026-10-14). A different address: one question, once. On "no": go on; a wall that appears anyway is Phase 2.
+
+While the person signs in, read: the workspace rules (1b), the vocabulary (3a), the repository (3b). When the script prints "✓ Signed in.", say: "✓ Signed in. Writing the storyboard now — about a minute. Go make the coffee; I'll be here when you're back."
+
 ## Phase 1b: Workspace rules, EVERY run
 
 The workspace admin can write standing rules for the recorder in plain words, one per line, in the DemoBites settings tab "Agentic Recorder Rules" ("Mask any number with a dollar sign.", "Never open the Billing page.", "Say Update Center, never changelog."). They apply to every take filmed in that workspace. At the start of EVERY run, batch or free prompt, right after the key resolves the workspace and BEFORE any storyboard:
@@ -101,7 +134,20 @@ When a page you need shows a login wall (login form, auth redirect, checkpoint p
 
 ## Phase 3: Storyboard, written BEFORE filming
 
-Write the storyboard as JSON before touching the camera.
+Write the storyboard as JSON before touching the camera. The person never sees the JSON. When it is checked (Phase 4), present it like this and nothing else:
+
+```
+✓ Storyboard ready. <N> steps, about <m:ss> of demo. Nothing in it creates or changes data.   ← or name what it creates and reverts, in plain words
+
+<the output of: node scripts/storyboard.mjs print <takeDir>/storyboard.json>
+
+How do you want to go?
+  1  Film it as it is
+  2  Change something first — tell me what
+  3  Show me what each step says — the narration, word for word
+```
+
+"1" is the approval (the storyboard is never skipped — founder law, kept 2026-10-14). "2": take the change, rewrite, present the box again, ask again. "3": paste `node scripts/storyboard.mjs words <takeDir>/storyboard.json`, then ask the same question again. A rule that could not be honoured, a brief's word the app does not use, a step pointed at and not pressed: said in one plain line under the box, never as a list of "beats".
 
 ### Phase 3a: Harvest the product's vocabulary FIRST
 
@@ -289,6 +335,8 @@ Before the real take, run the flow headless yourself (a throwaway script on the 
 
 Only come back to the human when a PRODUCT question remains that you cannot decide, for example which of two similar buttons is the feature. When you do, bring annotated screenshot evidence: screenshot the state, mark the candidates, ask one crisp question. Never ask the human to debug selectors for you.
 
+The dry run is never narrated (How you talk): the person reads "✓ Storyboard ready." and the box, not what you checked.
+
 ## Phase 5: The take
 
 ```bash
@@ -312,7 +360,11 @@ Filming laws baked into `record.mjs`, do not reimplement or weaken them:
 
 If the take fails mid flow, the partial video and manifest are still saved. Diagnose, fix the storyboard, film again.
 
+On the person's "1": say "Filming. About <m:ss>; I'll tell you when it lands." and relay record.mjs's `Filming ████░░ step n of N` lines as they come — nothing else from its output reaches the person.
+
 ## Phase 6: Deliver into DemoBites
+
+When `upload.mjs` prints its last line, say: "✓ Delivered. \"<title>\" (<m:ss>) is landing in your Demos grid now: <base>/demos — watch it come in there. You can change any sentence, the voice and the zooms in the editor." When minutes ran out, relay upload.mjs's "Kept…" line as it is.
 
 
 Send the TRIMMED CLEAN take into DemoBites. The studio owns the look: NO backdrop, NO rounded corners, NO shadow on the uploaded file. Everything (voice, zooms, look, intro, outro) becomes editable there.
