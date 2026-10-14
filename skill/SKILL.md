@@ -95,7 +95,7 @@ The camera browser uses a persistent profile at `.recorder/profile`. Signed in s
 
 When a page you need shows a login wall (login form, auth redirect, checkpoint page):
 
-1. Open a HEADED Playwright window on that profile at the login page and tell the human: "Sign in in the window I opened. I will wait." Poll for a signed in signal (URL leaves the login path, or a session cookie appears), then close the window. The session now lives in the profile.
+1. Run `node scripts/signin.mjs <login url>` — THE ONE WAY to open that window (founder 2026-10-14). It launches the camera's own browser (the real Chrome, the recorder profile, the anti-automation flag), tells the human "Sign in in the window that opened. I will wait.", waits until the URL leaves the login page, and closes the window; the session now lives in the profile. NEVER launch a sign-in window of your own: a bare Playwright launch declares itself an automation browser (`navigator.webdriver`), and an app's bot check (Cloudflare Turnstile, reCAPTCHA…) refuses the sign-in — the take is lost there and the customer with it. If the script reports that the bot check refused even this window, say so plainly and stop; do not try other browsers.
 2. NEVER type, read, store, or ask for credentials. Not the password, not a 2FA code, nothing. The human signs in with their own hands.
 3. Do this only when a wall actually appears. Do not preemptively ask for logins.
 
