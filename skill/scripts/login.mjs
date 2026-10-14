@@ -101,8 +101,17 @@ console.log(`  Open:  ${verifyUrl}`);
 console.log(`  Code:  ${user_code}`);
 console.log("");
 console.log("Approve the link in your browser. If a sign-in page appears first,");
-console.log("sign in — the approval page follows with the same code. Waiting...");
+console.log("sign in — the approval page follows with the same code.");
+// A real pause before the page appears (founder 2026-10-14: "we'll open a
+// browser now to connect, in 3 seconds"): the human is told, then has three
+// counted seconds, then the page opens. Never silent, never a question.
+process.stdout.write("Opening the approval page in your browser in 3");
+for (const n of [2, 1]) { await new Promise((r) => setTimeout(r, 1000)); process.stdout.write(`… ${n}`); }
+await new Promise((r) => setTimeout(r, 1000));
+console.log("… now. Waiting for the approval...");
 if (process.platform === "darwin") spawnSync("open", [verifyUrl], { stdio: "ignore" });
+else if (process.platform === "win32") spawnSync("cmd", ["/c", "start", "", verifyUrl], { stdio: "ignore" });
+else spawnSync("xdg-open", [verifyUrl], { stdio: "ignore" });
 
 const deadline = Date.now() + (expires_in ?? 900) * 1000;
 const waitMs = Math.max(2, interval ?? 5) * 1000;

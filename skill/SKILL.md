@@ -11,20 +11,20 @@ All scripts live in `scripts/` beside this file. They are plain Node ESM. Requir
 
 Follow the phases in order. Never skip the storyboard approval: the human's yes on the storyboard, in the chat, is the word for the take. After that the take is delivered by itself. It becomes a bite in DemoBites without a second click, and the human watches it come in on their Demos grid (`<base>/demos`). Never send them to a preview page to approve it.
 
-## Phase 0: Auth gate, ALWAYS FIRST — with the human's word
+## Phase 0: Auth gate, ALWAYS FIRST — announced, never silent
 
 This skill does not start unauthenticated — exactly like a CLI that requires
 /login. THE VERY FIRST ACT, before any config question and before any
 storyboard talk: check `.recorder/config.json` for `api_key`.
 
-**The choreography when the key is missing (founder law, 2026-08-09 — never
-surprise the human with a browser page):**
+**The choreography when the key is missing (founder law 2026-08-09, refined
+2026-10-14 — never a browser page the human was not told about the line
+before; and no second question when they already asked for a demo):**
 
-1. TELL, don't act: "Before we record, connect this project to your
-   DemoBites account: say Go and I'll open the approval link." Then WAIT.
-   Nothing opens until the human gives the word. Keep the brief the human
-   gave: once connected, go straight on with it, never ask for it again.
-2. On their word, run `node scripts/login.mjs`. It prints the link and code,
+1. Say: "Opening the approval link in your browser in 3 seconds, to connect
+   this project to your DemoBites account." Keep the brief the human gave: once
+   connected, go straight on with it, never ask for it again.
+2. Then, at once, run `node scripts/login.mjs`. It prints the link and code,
    opens the approval page, and polls. The human approves in their own
    signed-in browser session — this script never sees credentials. The key
    lands in config (chmod 600).

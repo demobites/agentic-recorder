@@ -41,18 +41,18 @@ try {
 if (connected) process.exit(0);
 
 const line = installed
-  ? "This project is not connected to DemoBites yet. Say Go and I'll open the approval link — or just ask me for a demo."
-  : "DemoBites is installed but the recorder is not set up on this machine yet. Say Go and I'll set it up — or just ask me for a demo.";
+  ? "This project is not connected to DemoBites yet. Say Go and I'll connect it — or just ask me for a demo."
+  : "DemoBites is installed but the recorder is not set up on this machine yet. Say Go and I'll set it up and connect it — or just ask me for a demo.";
 
 const additionalContext = [
   "DemoBites plugin, first words (session-start hook).",
   `Before anything else in your FIRST reply of this session, tell the person this one line, as it is: "${line}"`,
   "Then answer whatever they wrote. Say it once per session, never again in later replies.",
   installed
-    ? "If they answer Go: run the /demobites:login skill. Their Go is the word for the approval link, so do not ask for it again."
-    : "If they answer Go: run the /demobites:setup skill. Their Go is the word for the approval link too, so do not ask for it a second time — install, then open the link.",
+    ? "If they answer Go: run the /demobites:login skill. It announces the approval link and opens it at once — never ask again."
+    : "If they answer Go: run the /demobites:setup skill. It installs, announces the approval link and opens it at once — never ask again.",
   "If they ask for a demo instead: run the /demobites:record skill, which sets up and connects by itself and then films their brief.",
-  "Never open a browser page before the person said Go.",
+  "Never open a browser page silently: the line before it always says it is about to open.",
 ].join("\n");
 
 process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } }));

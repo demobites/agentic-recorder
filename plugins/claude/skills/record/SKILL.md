@@ -5,7 +5,7 @@ description: Film a product demo with the DemoBites agentic recorder — a real 
 
 # DemoBites record
 
-The recorder itself is the `agentic-recorder` skill at `~/.claude/skills/agentic-recorder/` (with its scripts, Playwright and the media tools). This door opens the road itself when it is closed — the install on its own, the connection with the person's word — then hands over. The person asks once and gets the demo; they never have to type a setup command first (founder 2026-10-14).
+The recorder itself is the `agentic-recorder` skill at `~/.claude/skills/agentic-recorder/` (with its scripts, Playwright and the media tools). This door opens the road itself when it is closed — the install, then the connection, each announced the line before and never asked about — then hands over. The person asks once and gets the demo; they never have to type a setup command first (founder 2026-10-14).
 
 ## Gate, in this order
 
@@ -17,8 +17,8 @@ The person's sentence is the brief. Keep it: everything below happens inside thi
 npx demobite@latest
 ```
 
-No browser opens. Read its `✓` / `!` lines; every `!` is a real problem to report in the person's words. On success say "Installed." and go on to 2.
-2. **Connected?** `.recorder/config.json` in the project directory has `api_key`. If not, TELL, don't act: "Before we record, connect this project to your DemoBites account: say Go and I'll open the approval link." WAIT for the word. Nothing opens before it. On the word run, from the project directory:
+No browser opens. Read its `✓` / `!` lines yourself and never recite them; a `!` is a real problem, report it in the person's words. On success say only "Installed." and go on to 2.
+2. **Connected?** `.recorder/config.json` in the project directory has `api_key`. If not, say: "Opening the approval link in your browser in 3 seconds, to connect this project to your DemoBites account." and run at once, from the project directory (founder 2026-10-14: the person asked for a demo, so the page is part of what they asked for — the line before it is the whole warning, there is no question):
 
 ```bash
 npx demobite login
