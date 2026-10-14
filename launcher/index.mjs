@@ -190,9 +190,12 @@ if (arg === "listen") {
   const baseFlag = argvRest[argvRest.indexOf("--base") + 1];
   let cfg = readCfg();
   const base = (argvRest.includes("--base") && baseFlag ? baseFlag : cfg?.base || "https://app.demobites.com").replace(/\/+$/, "");
-  if (!cfg?.api_key || (argvRest.includes("--base") && cfg?.base && cfg.base.replace(/\/+$/, "") !== base)) {
-    console.log("\n  Connecting this project to your DemoBites account first…\n");
-    const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs"), base], { stdio: "inherit", cwd: process.cwd() });
+  // --connect <code>: the line the Agentic Capture chat gave — already approved
+  // for the signed-in person; connects this machine without a page or a click.
+  const connectCode = argvRest.includes("--connect") ? (argvRest[argvRest.indexOf("--connect") + 1] || "") : "";
+  if (connectCode || !cfg?.api_key || (argvRest.includes("--base") && cfg?.base && cfg.base.replace(/\/+$/, "") !== base)) {
+    console.log(`\n  Connecting this ${connectCode ? "machine" : "project"} to your DemoBites account first…\n`);
+    const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs"), base, ...(connectCode ? ["--connect", connectCode] : [])], { stdio: "inherit", cwd: process.cwd() });
     if (r.status !== 0) process.exit(r.status ?? 1);
     cfg = readCfg();
   }
@@ -207,10 +210,18 @@ if (arg === "listen") {
   }
   const name = (argvRest[argvRest.indexOf("--name") + 1] && argvRest.includes("--name")) ? argvRest[argvRest.indexOf("--name") + 1] : os.hostname().replace(/\.local$/, "");
   const agentBin = (() => { const r = spawnSync(process.platform === "win32" ? "where" : "which", ["claude"], { encoding: "utf8" }); return r.status === 0 ? r.stdout.trim().split("\n")[0] : null; })();
+  // The repo this listener was started in (the Code signal on the rail): the
+  // git remote's owner/name, or null when the folder is not a repo.
+  const repo = (() => {
+    const r = spawnSync("git", ["config", "--get", "remote.origin.url"], { encoding: "utf8", cwd: process.cwd() });
+    if (r.status !== 0) return null;
+    const m = r.stdout.trim().match(/[:/]([^/:]+\/[^/]+?)(?:\.git)?$/);
+    return m ? m[1] : null;
+  })();
   const readiness = () => {
     let signins = [];
     try { signins = Object.keys(JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "signins.json"), "utf8")).origins || {}); } catch { /* none */ }
-    return { agent: agentBin ? "Claude Code" : null, chrome: haveChrome, recorder: pkg.version, signins, cwd: process.cwd(), platform: process.platform };
+    return { agent: agentBin ? "Claude Code" : null, chrome: haveChrome, recorder: pkg.version, signins, cwd: process.cwd(), platform: process.platform, repo };
   };
   const api = async (body) => {
     try {

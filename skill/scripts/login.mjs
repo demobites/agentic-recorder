@@ -27,7 +27,8 @@ let cfgParseFailed = false;
 try { cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8")); } catch (e) {
   cfgParseFailed = fs.existsSync(cfgPath);
 }
-const argv = process.argv.slice(2).filter((a) => a !== "--logout");
+const connectIdx = process.argv.indexOf("--connect");
+const argv = process.argv.slice(2).filter((a, i) => a !== "--logout" && a !== "--connect" && i + 2 !== connectIdx + 1);
 const wantLogout = process.argv.includes("--logout");
 // For LOGOUT the key's own home wins: the key was minted on cfg.base, so a
 // CLI base argument must not point the revoke at a different host (review
@@ -75,43 +76,56 @@ if (wantLogout) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-let start;
-try {
-  start = await fetch(`${base}/api/recorder/device`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-} catch (e) {
-  console.error(`Could not reach ${base}: ${e.message}`);
-  process.exit(1);
+// --connect <code> (Agentic Capture chat, 2026-10-15): the app already approved
+// this code for the signed-in person, so there is no page to open and nothing
+// to click — poll straight away and the key arrives.
+const connectAt = process.argv.indexOf("--connect");
+const connectCode = connectAt >= 0 ? (process.argv[connectAt + 1] || "").trim() : "";
+let device_code, expires_in, interval;
+if (connectCode) {
+  device_code = connectCode; expires_in = 600; interval = 2;
+  console.log("Connecting this machine to your DemoBites account…");
+} else {
+  let start;
+  try {
+    start = await fetch(`${base}/api/recorder/device`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+  } catch (e) {
+    console.error(`Could not reach ${base}: ${e.message}`);
+    process.exit(1);
+  }
+  if (!start.ok) {
+    console.error(`Device link start failed: ${start.status} ${await start.text().catch(() => "")}`);
+    process.exit(1);
+  }
+  const started = await start.json();
+  device_code = started.device_code; expires_in = started.expires_in; interval = started.interval;
+  const { user_code, verification_url } = started;
+  if (!device_code || !user_code || !verification_url) {
+    console.error("Device link response missing fields.");
+    process.exit(1);
+  }
+  const verifyUrl = new URL(verification_url, base).toString();
+  console.log("");
+  console.log(`  Open:  ${verifyUrl}`);
+  console.log(`  Code:  ${user_code}`);
+  console.log("");
+  console.log("Approve the link in your browser. If a sign-in page appears first,");
+  console.log("sign in — the approval page follows with the same code.");
+  // A real pause before the page appears (founder 2026-10-14: "we'll open a
+  // browser now to connect, in 3 seconds"): the human is told, then has three
+  // counted seconds, then the page opens. Never silent, never a question.
+  process.stdout.write("Opening the approval page in your browser in 3");
+  for (const n of [2, 1]) { await new Promise((r) => setTimeout(r, 1000)); process.stdout.write(`… ${n}`); }
+  await new Promise((r) => setTimeout(r, 1000));
+  console.log("… now. Waiting for the approval...");
+  if (process.platform === "darwin") spawnSync("open", [verifyUrl], { stdio: "ignore" });
+  else if (process.platform === "win32") spawnSync("cmd", ["/c", "start", "", verifyUrl], { stdio: "ignore" });
+  else spawnSync("xdg-open", [verifyUrl], { stdio: "ignore" });
 }
-if (!start.ok) {
-  console.error(`Device link start failed: ${start.status} ${await start.text().catch(() => "")}`);
-  process.exit(1);
-}
-const { device_code, user_code, verification_url, expires_in, interval } = await start.json();
-if (!device_code || !user_code || !verification_url) {
-  console.error("Device link response missing fields.");
-  process.exit(1);
-}
-const verifyUrl = new URL(verification_url, base).toString();
-console.log("");
-console.log(`  Open:  ${verifyUrl}`);
-console.log(`  Code:  ${user_code}`);
-console.log("");
-console.log("Approve the link in your browser. If a sign-in page appears first,");
-console.log("sign in — the approval page follows with the same code.");
-// A real pause before the page appears (founder 2026-10-14: "we'll open a
-// browser now to connect, in 3 seconds"): the human is told, then has three
-// counted seconds, then the page opens. Never silent, never a question.
-process.stdout.write("Opening the approval page in your browser in 3");
-for (const n of [2, 1]) { await new Promise((r) => setTimeout(r, 1000)); process.stdout.write(`… ${n}`); }
-await new Promise((r) => setTimeout(r, 1000));
-console.log("… now. Waiting for the approval...");
-if (process.platform === "darwin") spawnSync("open", [verifyUrl], { stdio: "ignore" });
-else if (process.platform === "win32") spawnSync("cmd", ["/c", "start", "", verifyUrl], { stdio: "ignore" });
-else spawnSync("xdg-open", [verifyUrl], { stdio: "ignore" });
 
 const deadline = Date.now() + (expires_in ?? 900) * 1000;
 const waitMs = Math.max(2, interval ?? 5) * 1000;
