@@ -34,9 +34,11 @@ The recorder ships as a plugin of this repository. Install it once, then run its
 /demobites:setup
 ```
 
+When Claude Code asks where to install, choose **Install for you (user scope)**: the plugin follows you into every project, and the connection to your DemoBites account is made per project.
+
 Then `/demobites:record`, `/demobites:login`, `/demobites:logout` — or just ask: "record a demo of the new billing page".
 
-You can also skip the setup line: ask for a demo right after the install and the record skill sets the recorder up by itself (once per machine, no browser), asks for one "Go" before opening the approval link, and then films what you asked for. Until the project is connected, every new session opens with one line that says so.
+You can also skip the setup line: ask for a demo right after the install and the record skill sets the recorder up by itself (once per machine), tells you it is opening the approval link in your browser, opens it, and then films what you asked for. Until the project is connected, every new session opens with one line that says so.
 
 **Codex**
 

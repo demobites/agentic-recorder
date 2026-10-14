@@ -7,8 +7,8 @@ description: Connect this project to a DemoBites account (device link approved i
 
 Connecting is one approval in the person's own browser. This command never sees credentials.
 
-1. TELL, don't act: "Connecting means approving a link in your browser — say Go when you're ready." WAIT for the word. Nothing opens before it.
-2. On the word, from the project directory:
+1. Say: "Opening the approval link in your browser in 3 seconds." — the person asked to connect (the login command, or a Go to the session-start line), so the page is part of what they asked for; the line before it is the whole warning, never a second question (founder 2026-10-14).
+2. Then, at once, from the project directory:
 
 ```bash
 npx demobite login

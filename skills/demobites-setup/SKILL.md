@@ -15,14 +15,14 @@ If `~/.claude/skills/agentic-recorder/SKILL.md` is missing, say first: "Setting 
 npx demobite@latest
 ```
 
-It checks Node (18+ is required and is always present where a coding agent runs), installs the recorder skill into `~/.claude/skills/agentic-recorder/` (the recorder's home on every agent; the npx installer puts it there), installs Playwright, ffmpeg and ffprobe beside it, fetches Chromium when the machine has no Google Chrome, and verifies that the media tools actually run. Read its `✓` / `!` lines: every `!` is a real problem to report in the person's words, never hidden. Running it again later updates the skill and changes nothing else.
+It checks Node (18+ is required and is always present where a coding agent runs), installs the recorder skill into `~/.claude/skills/agentic-recorder/` (the recorder's home on every agent; the npx installer puts it there), installs Playwright, ffmpeg and ffprobe beside it, fetches Chromium when the machine has no Google Chrome, and verifies that the media tools actually run. Read its `✓` / `!` lines yourself and never recite them (a customer does not know what a "! line" is): a `!` is a real problem, report it in the person's words; otherwise say only "Installed." Running it again later updates the skill and changes nothing else.
 
-## 2. Connect (device link, with the person's word)
+## 2. Connect (device link — announced the line before, never asked twice)
 
 Check `.recorder/config.json` in the project directory for `api_key`.
 
 - **Present:** say "Already connected — workspace <name>" (the `workspace.name` in that file) and stop. Do not open a link.
-- **Missing:** TELL, don't act: "Installed. Connecting this project to your DemoBites account means approving a link in your browser — say Go when you're ready." WAIT for the word. On it, run:
+- **Missing:** say "Installed. Opening the approval link in your browser in 3 seconds, to connect this project to your DemoBites account." and run at once (founder 2026-10-14: the person asked for this — the setup command, a Go to the session-start line, or a demo — so the page is part of what they asked for; the line before it is the whole warning, there is no second question):
 
 ```bash
 npx demobite login
@@ -47,4 +47,4 @@ It prints the DemoBites management MCP (URL + `Authorization: Bearer …` header
 
 ## What this skill never does
 
-Never types or stores credentials, never opens a browser page before the person said Go, never retries a denied link, never mentions plan limits or prices — the product does that talking.
+Never types or stores credentials, never opens a browser page without saying so the line before, never asks a second time for what the person already asked for, never retries a denied link, never mentions plan limits or prices — the product does that talking.
