@@ -11,6 +11,12 @@
 // page sees the genuine product, not a bare automation browser.
 //
 //   node scripts/signin.mjs <login url> [--timeout <ms>] [--probe]
+//   node scripts/signin.mjs --check <url>      "session <origin> since <date>" (exit 0) or "none" (exit 3)
+//
+// The ledger `.recorder/signins.json` remembers every origin signed into on
+// this profile (founder 2026-10-14: the sign-in question is asked ONCE per
+// address — tomorrow, same address, no question, no window). `--check` reads
+// it; a successful sign-in writes it.
 //
 // It opens the window, tells the human to sign in, and waits until the URL
 // leaves the login page (or a session cookie appears), then closes the
@@ -18,10 +24,19 @@
 // it. Never types, reads, stores or asks for credentials. `--probe` only
 // loads the page, reports whether the bot check passed, and exits — the
 // recorder's own health check, no human needed.
+import fs from "node:fs";
 import path from "node:path";
-import { chromium } from "playwright";
 
 const argv = process.argv.slice(2);
+const ledgerPath = path.resolve(process.cwd(), ".recorder", "signins.json");
+const readLedger = () => { try { return JSON.parse(fs.readFileSync(ledgerPath, "utf8")); } catch { return { origins: {} }; } };
+if (argv[0] === "--check") {
+  let origin; try { origin = new URL(argv[1]).origin; } catch { console.error("Usage: node scripts/signin.mjs --check <url>"); process.exit(2); }
+  const since = readLedger().origins?.[origin];
+  if (since) { console.log(`session ${origin} since ${since}`); process.exit(0); }
+  console.log("none"); process.exit(3);
+}
+const { chromium } = await import("playwright"); // after --check, which needs no browser
 const url = argv.find((a) => !a.startsWith("--"));
 if (!url) { console.error("Usage: node scripts/signin.mjs <login url> [--timeout <ms>] [--probe]"); process.exit(2); }
 const probe = argv.includes("--probe");
@@ -70,7 +85,7 @@ if (probe) {
   process.exit(state === "failed" ? 1 : 0);
 }
 
-console.log("Sign in in the window that opened. I will wait — nothing is typed or read for you.");
+console.log("⏳ Waiting for you — sign in in the Chrome window that just opened. Your hands only; nothing you type is seen.");
 const started = Date.now();
 let lastCheck = "none";
 while (Date.now() - started < timeoutMs) {
@@ -78,7 +93,8 @@ while (Date.now() - started < timeoutMs) {
   let here;
   try { here = new URL(page.url()); } catch { continue; }
   if (here.pathname !== startPath && !/sign-?in|log-?in|auth|sso|oauth|callback/i.test(here.pathname)) {
-    console.log(`Signed in (now at ${here.pathname}). The session is saved in the recorder profile.`);
+    console.log(`✓ Signed in. The session is saved for ${here.origin}; next time there is no question and no window.`);
+    try { const l = readLedger(); l.origins = { ...(l.origins ?? {}), [here.origin]: new Date().toISOString() }; fs.mkdirSync(path.dirname(ledgerPath), { recursive: true }); fs.writeFileSync(ledgerPath, JSON.stringify(l, null, 2) + "\n"); } catch { /* the session still lives in the profile */ }
     await ctx.close();
     process.exit(0);
   }

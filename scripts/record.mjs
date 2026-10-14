@@ -773,6 +773,9 @@ try {
       t_start: t(),
     };
     process.stdout.write(`step ${rec.n} ${step.action} ${step.label ?? ""}\n`);
+    // The customer's line (founder 2026-10-14): one bar, step n of N. The
+    // agent relays this, never the step/action lines above.
+    { const N = STORYBOARD.steps.length, filled = Math.round((rec.n / N) * 20); process.stdout.write(`Filming  ${"█".repeat(filled)}${"░".repeat(20 - filled)}  step ${rec.n} of ${N}\n`); }
     if (step.action === "goto") {
       const navIssuedAt = t();
       // domcontentloaded, not load: a heavy site behind a proxy (the cloud
