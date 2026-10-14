@@ -5,7 +5,7 @@ One package, three names, one version. `demobite`, `agentic-recorder` and `demob
 ## Every release (major, minor or patch)
 
 1. Bump `version` in `package.json` and commit.
-2. `npm run release` (add `-- --dry-run` to rehearse). It publishes the version under each of the three names, restores `package.json`, and reads the three versions back from the registry.
+2. `npm run release` (add `-- --dry-run` to rehearse). It publishes the version under each of the three names under a holding tag (`pending`), waits until each tarball is actually downloadable from the registry, moves `latest` to it, restores `package.json`, and reads the three versions back. (Why the holding tag: `latest` moving before the tarball has propagated gives a customer `npx demobite@latest` → "No matching version found" for a minute or two — the founder's test hit it on 2026-10-14.)
 3. Tag: `git tag -a v<version> -m "<title>" && git push origin v<version>`.
 
 A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and leave the other two behind. If a release stops halfway (npm refuses to republish a version that already landed), bump the patch and run the release again so all three names end on the same number.
@@ -13,6 +13,11 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 `agenticrecorder` (no hyphen) cannot be published by anyone: npm refuses names that differ only by punctuation from an existing package. Owning `agentic-recorder` protects it.
 
 ## Changelog
+
+### 1.8.1
+
+- The three doors (setup, login, record — both skill trees) carry the "How you talk" voice: results, not work; the closing line is the one line the skill names, nothing before or after; never a list of what was installed, verified or registered (founder 2026-10-14: "Why does the user need to know that?"). The MCP step is silent. An install that fails with "No matching version found" is retried once after 60 s, silently.
+- Release: publish under the holding tag `pending`, wait for the tarballs, then move `latest` — the transient "No matching version found" a customer could hit minutes after a release is gone.
 
 ### 1.8.0
 

@@ -5,6 +5,10 @@ description: Film a product demo with the DemoBites agentic recorder — a real 
 
 # DemoBites record
 
+## How you talk
+
+The plugin is a product; every line is read by the person, never by the people who built it (founder 2026-10-14: "Why does the user need to know that?"). Results, not work: never list what was installed, verified, registered or written; never mention ffmpeg, Playwright, keys, config files, the MCP or a transient error that was overcome. A step that stops for the person ends with one line that says what we wait for. A problem is one plain line in the person's words. When everything worked, the closing line is the ONE line this skill names — nothing before it, nothing after it.
+
 The recorder itself is the `agentic-recorder` skill at `~/.claude/skills/agentic-recorder/` (with its scripts, Playwright and the media tools). This door opens the road itself when it is closed — the install, then the connection, each announced the line before and never asked about — then hands over. The person asks once and gets the demo; they never have to type a setup command first (founder 2026-10-14).
 
 ## Gate, in this order
@@ -18,6 +22,7 @@ npx demobite@latest
 ```
 
 No browser opens. Read its `✓` / `!` lines yourself and never recite them; a `!` is a real problem, report it in the person's words. On success say only "Installed." and go on to 2.
+   If it fails with "No matching version found" (a release published minutes ago, still propagating on npm), wait 60 seconds and run it again — silently. Only if it fails twice say, in one line, that the recorder could not be fetched right now and to try again in a few minutes.
 2. **Connected?** `.recorder/config.json` in the project directory has `api_key`. If not, say: "Opening the approval link in your browser in 3 seconds, to connect this project to your DemoBites account." and run at once, from the project directory (founder 2026-10-14: the person asked for a demo, so the page is part of what they asked for — the line before it is the whole warning, there is no question):
 
 ```bash

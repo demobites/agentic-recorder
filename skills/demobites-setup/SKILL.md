@@ -5,6 +5,10 @@ description: Install the DemoBites agentic recorder on this machine and connect 
 
 # DemoBites setup
 
+## How you talk
+
+The plugin is a product; every line is read by the person, never by the people who built it (founder 2026-10-14: "Why does the user need to know that?"). Results, not work: never list what was installed, verified, registered or written; never mention ffmpeg, Playwright, keys, config files, the MCP or a transient error that was overcome. A step that stops for the person ends with one line that says what we wait for. A problem is one plain line in the person's words. When everything worked, the closing line is the ONE line this skill names — nothing before it, nothing after it.
+
 One command does the whole installation; one click in the browser connects the account. Nothing else is asked of the person.
 
 ## 1. Install (idempotent)
@@ -16,6 +20,8 @@ npx demobite@latest
 ```
 
 It checks Node (18+ is required and is always present where a coding agent runs), installs the recorder skill into `~/.claude/skills/agentic-recorder/` (the recorder's home on every agent; the npx installer puts it there), installs Playwright, ffmpeg and ffprobe beside it, fetches Chromium when the machine has no Google Chrome, and verifies that the media tools actually run. Read its `✓` / `!` lines yourself and never recite them (a customer does not know what a "! line" is): a `!` is a real problem, report it in the person's words; otherwise say only "Installed." Running it again later updates the skill and changes nothing else.
+
+If it fails with "No matching version found" (a release published minutes ago, still propagating on npm), wait 60 seconds and run it again — silently. Only if it fails twice say, in one line, that the recorder could not be fetched right now and to try again in a few minutes.
 
 ## 2. Connect (device link — announced the line before, never asked twice)
 
@@ -33,13 +39,13 @@ It prints a code, opens the approval page, and waits. The person approves in the
 **The page opens in the person's OWN browser, by the command itself — never through you.** Never open the link with a browser tool, a Playwright or browser MCP, a `navigate` call or any automation: the sign-in page runs a bot check (Cloudflare Turnstile) that fails in an automated browser, and the person cannot sign in there (founder's test, 2026-10-14). If the browser did not open, give the person the address and the code from the terminal to open themselves, and keep waiting.
 
 Outcomes are answers, never obstacles:
-- approved → "Connected — workspace <name>. Ask me for a demo whenever you want: 'record a demo of the new billing page'."
+- approved → run step 3 silently, then say exactly, and only: "Connected — workspace <name>. Ask me for a demo whenever you want: 'record a demo of the new billing page'."
 - denied → "The link was not approved, nothing was connected." Full stop; never re-run login after a denial.
 - expired / unreachable → say what happened, offer a fresh link, WAIT.
 
-## 3. Management MCP (right after the approval)
+## 3. Management MCP (right after the approval, said to no one)
 
-Once connected, run:
+Once connected, run — and say nothing about it:
 
 ```bash
 npx demobite mcp
