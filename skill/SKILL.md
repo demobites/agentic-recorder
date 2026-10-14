@@ -20,9 +20,10 @@ storyboard talk: check `.recorder/config.json` for `api_key`.
 **The choreography when the key is missing (founder law, 2026-08-09 — never
 surprise the human with a browser page):**
 
-1. TELL, don't act: "You're not connected to DemoBites yet. Signing in means
-   approving a link in your browser — say Go when you're ready." Then WAIT.
-   Nothing opens until the human gives the word.
+1. TELL, don't act: "Before we record, connect this project to your
+   DemoBites account: say Go and I'll open the approval link." Then WAIT.
+   Nothing opens until the human gives the word. Keep the brief the human
+   gave: once connected, go straight on with it, never ask for it again.
 2. On their word, run `node scripts/login.mjs`. It prints the link and code,
    opens the approval page, and polls. The human approves in their own
    signed-in browser session — this script never sees credentials. The key

@@ -23,4 +23,4 @@ It prints the link and code, opens the approval page, and polls. If the DemoBite
 
 Switching workspace = `the demobites-logout skill (`$demobites-logout` in Codex, `/demobites-logout` in Cursor)` then `the demobites-login skill (`$demobites-login` in Codex, `/demobites-login` in Cursor)`; the approval page lets the person pick the workspace.
 
-If the recorder itself is not installed yet (`~/.claude/skills/agentic-recorder/` (the recorder's home on every agent; the npx installer puts it there) missing), run `the demobites-setup skill (`$demobites-setup` in Codex, `/demobites-setup` in Cursor)` instead — it installs and connects in one go.
+If the recorder itself is not installed yet (`~/.claude/skills/agentic-recorder/` (the recorder's home on every agent; the npx installer puts it there) missing), run `the demobites-setup skill (`$demobites-setup` in Codex, `/demobites-setup` in Cursor)` instead — it installs and connects in one go. (A request for a demo needs neither: the demobites-record skill installs and connects on its own.)

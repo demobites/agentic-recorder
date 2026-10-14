@@ -75,7 +75,7 @@ if (arg === "record") {
   }
   const cfg = readCfg();
   if (!cfg?.api_key) {
-    console.log("This project is not connected to DemoBites yet.\nRun `npx demobite login` (it prints a link to approve in your browser), then run this command again.");
+    console.log("Before we record, this project needs a DemoBites account.\nRun `npx demobite login` (it prints a link to approve in your browser), then run this command again.");
     process.exit(1);
   }
   const r = spawnSync("node", [briefsScript, "list", "--slug", slug], {
@@ -269,7 +269,8 @@ Cursor, Codex) in your project and ask:
     "Record a demo of <your flow> and upload it to DemoBites"
     "Create a release with my latest bites and add Spanish"
 
-It signs in via your browser on first use (or run: npx demobite login).
+Before the first demo it connects this project to your DemoBites account —
+one link to approve in your browser (or run now: npx demobite login).
 Manage-by-agent needs the MCP: npx demobite mcp (once, after login).
 Only the recorder, no DemoBites? See the open recorder in this package's repo.
 `);

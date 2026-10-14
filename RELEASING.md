@@ -14,6 +14,10 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 
 ## Changelog
 
+### 1.7.3
+
+- First-run flow (founder 2026-10-14). Claude Code: a session-start hook (`plugins/claude/hooks/`) opens every session without a connected recorder with one line — set it up, or just ask for a demo — and goes quiet once the project is connected. The record door installs the recorder by itself when it is missing ("Setting up the recorder first. This happens once per machine."), asks for the one "Go" before the approval link ("Before we record, connect this project to your DemoBites account…"), and then films the brief the person gave, without asking for it again. The setup skill no longer claims a request for a demo (one owner per sentence). Same bodies on the Codex / Cursor tree; the npm recorder skill and the launcher say the same sentence.
+
 ### 1.7.1
 
 - The click is always seen close (founder, 2026-09-29). A click whose line is about where it leads (`frame: "wide"`) is still filmed close on the click; the landing after it is the wide shot. Before, the whole step went wide and the viewer saw a tiny cursor click a tiny item (bite 1117: all three clicks at 1.0x, now 3.00x, 3.00x and 2.11x).
