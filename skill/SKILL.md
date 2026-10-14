@@ -26,6 +26,16 @@ The plugin is a product. Every line you say is read by the person who asked for 
 - **Demo, never recording.** The thing the person gets is a demo; the act is filming.
 - **Findings go to us, never to the person.** Anything you learned about the recorder, the installer, the camera or DemoBites itself (a title that got cut, a merge rule, a missing encoder) is written to `.recorder/notes.md` in the project — dated, one paragraph each — and never said in the chat. The person asked for a demo, not a report on our product. (Founder 2026-10-14: "all this nonsense and all this explanation is not relevant.")
 
+## Listening mode — the person is in the app, not here
+
+When `RECORDER_JOB` is set (the take was asked for in the DemoBites app and `npx demobite listen` is running you), the person watches the Capture tab, not this conversation. Everything you would have said to them, the scripts carry to the app; everything you would have asked, the app answers:
+
+- **Never ask anything here.** No sign-in question, no "1 / 2 / 3", no "say yes". Nobody reads this conversation.
+- **The sign-in:** when `signin.mjs --check <url>` says "none", run `signin.mjs <url>` at once — it tells the app "sign in on your machine" and the window opens there.
+- **The storyboard:** after writing `storyboard.json`, run `node scripts/storyboard.mjs await <takeDir>/storyboard.json` instead of printing the box. It sends the box to the app and prints the person's answer: `film` → Phase 5; `change: <note>` → rewrite the storyboard, run `await` again; `cancelled` → stop, say nothing.
+- **Filming, delivery, ready:** `record.mjs`, `upload.mjs` and `status.mjs` post their moments by themselves. Run them exactly as in the phases; the app shows the bar and the editor link.
+- **Findings** still go to `.recorder/notes.md`.
+
 ## Phase 0: Auth gate, ALWAYS FIRST — announced, never silent
 
 This skill does not start unauthenticated — exactly like a CLI that requires

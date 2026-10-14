@@ -26,6 +26,7 @@
 // recorder's own health check, no human needed.
 import fs from "node:fs";
 import path from "node:path";
+import { postEvent } from "./listen-event.mjs";
 
 const argv = process.argv.slice(2);
 const ledgerPath = path.resolve(process.cwd(), ".recorder", "signins.json");
@@ -86,6 +87,7 @@ if (probe) {
 }
 
 console.log("⏳ Waiting for you — sign in in the Chrome window that just opened. Your hands only; nothing you type is seen.");
+await postEvent("signin_wait", { url });
 const started = Date.now();
 let lastCheck = "none";
 while (Date.now() - started < timeoutMs) {
@@ -94,6 +96,7 @@ while (Date.now() - started < timeoutMs) {
   try { here = new URL(page.url()); } catch { continue; }
   if (here.pathname !== startPath && !/sign-?in|log-?in|auth|sso|oauth|callback/i.test(here.pathname)) {
     console.log(`✓ Signed in. The session is saved for ${here.origin}; next time there is no question and no window.`);
+    await postEvent("signed_in", { origin: here.origin });
     try { const l = readLedger(); l.origins = { ...(l.origins ?? {}), [here.origin]: new Date().toISOString() }; fs.mkdirSync(path.dirname(ledgerPath), { recursive: true }); fs.writeFileSync(ledgerPath, JSON.stringify(l, null, 2) + "\n"); } catch { /* the session still lives in the profile */ }
     await ctx.close();
     process.exit(0);
