@@ -14,6 +14,10 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 
 ## Changelog
 
+### 1.9.1
+
+- `signin.mjs` looks before it waits: a page with no password field, no sign-in path and no bot check is open — "✓ No sign-in needed", the address remembered, the window closed, nothing asked (the first listening run waited four minutes on the public site). A wall keeps today's behaviour.
+
 ### 1.9.0
 
 - **`npx demobite listen`** (founder 2026-10-14 night, "YES!!!!"): the web flow. The machine checks in to the app with the person's recorder key (`PUT /api/recorder/listen`), pulls the jobs the Create tab's Agentic Capture created for its owner, runs the person's own Claude Code headless with the recorder skill in LISTENING MODE, and posts every moment back — started, waiting for the sign-in, signed in, the storyboard box, filming step n of N, delivered, ready with the editor link. One verb, record, for the owner only; closing the terminal ends it. `--base <url>` for dev or a preview; `--name`.
