@@ -5,6 +5,10 @@ description: Connect this project to a DemoBites account (device link approved i
 
 # DemoBites login
 
+## How you talk
+
+The plugin is a product; every line is read by the person, never by the people who built it (founder 2026-10-14: "Why does the user need to know that?"). Results, not work: never list what was installed, verified, registered or written; never mention ffmpeg, Playwright, keys, config files, the MCP or a transient error that was overcome. A step that stops for the person ends with one line that says what we wait for. A problem is one plain line in the person's words. When everything worked, the closing line is the ONE line this skill names — nothing before it, nothing after it.
+
 Connecting is one approval in the person's own browser. This command never sees credentials.
 
 1. Say: "Opening the approval link in your browser in 3 seconds." — the person asked to connect (the login command, or a Go to the session-start line), so the page is part of what they asked for; the line before it is the whole warning, never a second question (founder 2026-10-14).
@@ -19,7 +23,7 @@ It prints the link and code, opens the approval page, and polls. If the DemoBite
 **The page opens in the person's OWN browser, by the command itself — never through you.** Never open the link with a browser tool, a Playwright or browser MCP, a `navigate` call or any automation: the sign-in page runs a bot check (Cloudflare Turnstile) that fails in an automated browser, and the person cannot sign in there (founder's test, 2026-10-14). If the browser did not open, give the person the address and the code from the terminal to open themselves, and keep waiting.
 
 3. Outcomes are answers, never obstacles:
-   - approved → "Connected — workspace <name>." Move on.
+   - approved → say exactly, and only: "Connected — workspace <name>." Move on.
    - denied → "The link was not approved, nothing was connected." Full stop. NEVER re-run login after a denial; sign-in happens again only when the person asks.
    - expired / unreachable → say what happened, offer a fresh link, WAIT.
 

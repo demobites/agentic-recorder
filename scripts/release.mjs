@@ -30,7 +30,12 @@ try {
     const pkg = { ...base, name, bin: { [name]: "launcher/index.mjs" } };
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
     console.log(`\n── ${name}@${base.version}${dryRun ? " (dry run)" : ""}`);
-    const r = spawnSync("npm", ["publish", "--access", "public", ...(dryRun ? ["--dry-run"] : [])], { cwd: root, stdio: "inherit", env: { ...process.env, DEMOBITE_RELEASE: "1" } });
+    // Publish under a HOLDING tag (founder's test 2026-10-14: `npx demobite@latest`
+    // failed with "No matching version found" a minute after a publish — npm
+    // moved `latest` before the tarball had propagated, and a customer in that
+    // window gets the error). `latest` moves below, once the tarball is
+    // actually downloadable.
+    const r = spawnSync("npm", ["publish", "--access", "public", "--tag", "pending", ...(dryRun ? ["--dry-run"] : [])], { cwd: root, stdio: "inherit", env: { ...process.env, DEMOBITE_RELEASE: "1" } });
     if (r.status !== 0) { console.error(`\n${name}@${base.version} did not publish (exit ${r.status}). Published so far: ${published.join(", ") || "none"}. Fix and rerun; npm refuses to republish a version that already landed, so bump the patch if some names went out.`); process.exit(r.status ?? 1); }
     published.push(name);
   }
@@ -38,7 +43,21 @@ try {
   fs.writeFileSync(pkgPath, original);
 }
 if (dryRun) { console.log(`\nDry run ok for ${NAMES.join(", ")} at ${base.version}.`); process.exit(0); }
-console.log(`\nPublished ${NAMES.join(", ")} at ${base.version}. Verifying the registry…`);
+console.log(`\nPublished ${NAMES.join(", ")} at ${base.version} under the holding tag. Waiting for the tarballs, then moving latest…`);
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+for (const name of NAMES) {
+  const url = `https://registry.npmjs.org/${name}/${base.version}`;
+  let ok = false;
+  for (let i = 0; i < 36 && !ok; i++) {
+    try { ok = (await fetch(url + `?t=${Date.now()}`, { cache: "no-store" })).status === 200; } catch { ok = false; }
+    if (!ok) await sleep(10000);
+  }
+  if (!ok) { console.error(`  ✗ ${name}@${base.version} not downloadable after 6 minutes — latest NOT moved. Check the registry, then: npm dist-tag add ${name}@${base.version} latest`); process.exitCode = 1; continue; }
+  const t = spawnSync("npm", ["dist-tag", "add", `${name}@${base.version}`, "latest"], { cwd: root, stdio: "inherit" });
+  if (t.status !== 0) { console.error(`  ✗ could not move latest for ${name}; run: npm dist-tag add ${name}@${base.version} latest`); process.exitCode = 1; }
+  else console.log(`  ✓ ${name}@${base.version} downloadable — latest moved`);
+}
+console.log(`Verifying the registry…`);
 let bad = false;
 for (const name of NAMES) {
   const v = spawnSync("npm", ["view", `${name}@${base.version}`, "version"], { encoding: "utf8" }).stdout.trim();
