@@ -18,6 +18,10 @@
 // waiting: "minutes", resetsAt, dashboardUrl, stagingId }) and waits on the
 // same grid; the stage status reads "waiting" until minutes are back.
 
+// LISTENING (2026-10-14): the app's mailbox, when `npx demobite listen` runs
+// this take; a no-op everywhere else (the terminal flow, the cloud sandbox
+// copy that may not ship listen-event.mjs).
+const postEvent = await import("./listen-event.mjs").then((m) => m.postEvent).catch(() => async () => null);
 /** Where the person watches their takes: the Demos grid. `dashboardUrl` from
  * the server wins (relative or absolute), else <base>/demos. */
 export function gridUrl(base, dashboardUrl) {
@@ -106,6 +110,7 @@ export async function waitForDecision({ base, apiKey, stagingId, pageUrl, delive
       if (!announced) {
         process.stdout.write("\n");
         console.log(st.status === "delivered" ? `delivered: bite ${st.biteId} is being created` : `Approved — bite ${st.biteId} is being created`);
+        void postEvent("delivered", { biteId: st.biteId });
         announced = true;
         approvedBiteId = st.biteId;
         finalStudioUrl = st.studioUrl ? new URL(st.studioUrl, base).toString() : null;
@@ -146,6 +151,7 @@ export async function waitForDecision({ base, apiKey, stagingId, pageUrl, delive
     if (last.zooms === 0) console.error("WARNING: no camera shots landed.");
   }
   if (finalStudioUrl) console.log(`Studio: ${finalStudioUrl}`);
+  await postEvent("ready", { biteId: approvedBiteId, studioUrl: finalStudioUrl ?? null });
   return { exitCode: 0, status: "completed", biteId: approvedBiteId, studioUrl: finalStudioUrl };
 }
 

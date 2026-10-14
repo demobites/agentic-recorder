@@ -12,6 +12,10 @@
 import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
+// LISTENING (2026-10-14): the app's mailbox, when `npx demobite listen` runs
+// this take; a no-op everywhere else (the terminal flow, the cloud sandbox
+// copy that may not ship listen-event.mjs).
+const postEvent = await import("./listen-event.mjs").then((m) => m.postEvent).catch(() => async () => null);
 
 const [, , outArg, storyArg] = process.argv;
 if (!outArg || !storyArg) {
@@ -775,7 +779,7 @@ try {
     process.stdout.write(`step ${rec.n} ${step.action} ${step.label ?? ""}\n`);
     // The customer's line (founder 2026-10-14): one bar, step n of N. The
     // agent relays this, never the step/action lines above.
-    { const N = STORYBOARD.steps.length, filled = Math.round((rec.n / N) * 20); process.stdout.write(`Filming  ${"█".repeat(filled)}${"░".repeat(20 - filled)}  step ${rec.n} of ${N}\n`); }
+    { const N = STORYBOARD.steps.length, filled = Math.round((rec.n / N) * 20); process.stdout.write(`Filming  ${"█".repeat(filled)}${"░".repeat(20 - filled)}  step ${rec.n} of ${N}\n`); void postEvent("filming", { n: rec.n, N }); }
     if (step.action === "goto") {
       const navIssuedAt = t();
       // domcontentloaded, not load: a heavy site behind a proxy (the cloud

@@ -178,6 +178,103 @@ if (!haveChrome) {
   if (r.status !== 0) warn("Recording will fail until ffmpeg and ffprobe both work. Re-run this command, or install them on your system.");
 }
 
+
+// ── LISTENING (founder 2026-10-14 night, "YES!!!!"): `npx demobite listen`.
+// The machine checks in to the app with the person's recorder key, pulls
+// the jobs the Capture tab created for this owner, runs the person's own
+// coding agent headless with the recorder skill, and posts every moment
+// back. One verb — record — for the owner only; never "remote control".
+// Closing the terminal ends it. `--base <url>` points at dev or a preview.
+if (arg === "listen") {
+  const argvRest = process.argv.slice(3);
+  const baseFlag = argvRest[argvRest.indexOf("--base") + 1];
+  let cfg = readCfg();
+  const base = (argvRest.includes("--base") && baseFlag ? baseFlag : cfg?.base || "https://app.demobites.com").replace(/\/+$/, "");
+  if (!cfg?.api_key || (argvRest.includes("--base") && cfg?.base && cfg.base.replace(/\/+$/, "") !== base)) {
+    console.log("\n  Connecting this project to your DemoBites account first…\n");
+    const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs"), base], { stdio: "inherit", cwd: process.cwd() });
+    if (r.status !== 0) process.exit(r.status ?? 1);
+    cfg = readCfg();
+  }
+  if (!cfg?.api_key) { warn("Not connected — run: npx demobite login"); process.exit(1); }
+  const listenFile = path.join(process.cwd(), ".recorder", "listen.json");
+  let listen = {};
+  try { listen = JSON.parse(fs.readFileSync(listenFile, "utf8")); } catch { /* first time */ }
+  if (!listen.machine_id) {
+    listen.machine_id = (await import("node:crypto")).randomBytes(12).toString("hex");
+    fs.mkdirSync(path.dirname(listenFile), { recursive: true });
+    fs.writeFileSync(listenFile, JSON.stringify(listen, null, 2) + "\n");
+  }
+  const name = (argvRest[argvRest.indexOf("--name") + 1] && argvRest.includes("--name")) ? argvRest[argvRest.indexOf("--name") + 1] : os.hostname().replace(/\.local$/, "");
+  const agentBin = (() => { const r = spawnSync(process.platform === "win32" ? "where" : "which", ["claude"], { encoding: "utf8" }); return r.status === 0 ? r.stdout.trim().split("\n")[0] : null; })();
+  const readiness = () => {
+    let signins = [];
+    try { signins = Object.keys(JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "signins.json"), "utf8")).origins || {}); } catch { /* none */ }
+    return { agent: agentBin ? "Claude Code" : null, chrome: haveChrome, recorder: pkg.version, signins, cwd: process.cwd(), platform: process.platform };
+  };
+  const api = async (body) => {
+    try {
+      const res = await fetch(`${base}/api/recorder/listen`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.api_key}` }, body: JSON.stringify(body) });
+      if (res.status === 401) { console.error("\n  The recorder key was refused. Run: npx demobite login"); process.exit(1); }
+      return res.ok ? await res.json() : null;
+    } catch { return null; }
+  };
+  const event = (job_id, kind, payload) => api({ action: "event", job_id, kind, payload });
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  console.log(`\n  Listening as "${name}" for ${cfg.workspace?.name ?? "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
+  console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${agentBin ? "Claude Code found." : "! Claude Code was not found on this machine — install it and sign in, it does the thinking."}`);
+  console.log("  Leave this terminal open; closing it stops the listening.\n");
+
+  const runJob = async (job) => {
+    console.log(`\n  ▶ Job ${job.id}: ${job.brief.slice(0, 100)}${job.brief.length > 100 ? "…" : ""}`);
+    if (!agentBin) { await event(job.id, "failed", { message: "Claude Code is not installed on this machine" }); return; }
+    await event(job.id, "started", { machine: name });
+    const prompt = [
+      "Film a demo with the agentic-recorder skill. Read ~/.claude/skills/agentic-recorder/SKILL.md first and follow it exactly, in LISTENING MODE (its section \"Listening mode\"): the person is watching in the DemoBites app, not here — never ask anything in this conversation; the scripts carry every question to the app and bring the answer back.",
+      `Brief: ${job.brief}`,
+      job.url ? `Address to start from: ${job.url}` : "Address: work it out from this project (the saved config, the codebase).",
+      `Show the storyboard before filming: ${job.review_storyboard ? "yes — run storyboard.mjs await and obey its answer" : "no — storyboard.mjs await returns film at once"}.`,
+    ].join("\n");
+    const child = (await import("node:child_process")).spawn(agentBin, ["-p", prompt, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"], {
+      cwd: process.cwd(),
+      env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let buf = "";
+    child.stdout.on("data", (chunk) => {
+      buf += chunk.toString();
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
+        if (!line.trim()) continue;
+        try {
+          const m = JSON.parse(line);
+          if (m.type === "assistant") {
+            for (const c of m.message?.content ?? []) {
+              if (c.type === "text" && c.text?.trim()) { console.log(`  · ${c.text.trim().split("\n")[0].slice(0, 140)}`); void event(job.id, "agent", { text: c.text.trim().slice(0, 1200) }); }
+            }
+          }
+        } catch { /* not a JSON line */ }
+      }
+    });
+    child.stderr.on("data", (chunk) => { const t = chunk.toString().trim(); if (t) console.error(`  ! ${t.split("\n")[0].slice(0, 160)}`); });
+    const code = await new Promise((resolve) => child.on("close", resolve));
+    const st = await api({ action: "poll", job_id: job.id });
+    if (st && !["ready", "failed", "cancelled"].includes(st.status)) {
+      if (code === 0) await event(job.id, "note", { text: "The agent finished without a ready signal." });
+      await event(job.id, "failed", { message: code === 0 ? "The demo did not come through — try again" : `The agent stopped (exit ${code})` });
+    }
+    console.log(`  ■ Job ${job.id} ${st?.status ?? "ended"}.`);
+  };
+
+  for (;;) {
+    const r = await api({ action: "checkin", machine_id: listen.machine_id, name, readiness: readiness() });
+    if (r?.job) await runJob(r.job);
+    else await sleep(5000);
+  }
+}
+
 // ── 3. Subcommands ─────────────────────────────────────────────────────────
 if (arg === "login" || arg === "logout") {
   // `login <base>` forwards the base (dev, a preview) to login.mjs, which

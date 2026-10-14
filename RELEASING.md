@@ -14,6 +14,11 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 
 ## Changelog
 
+### 1.9.0
+
+- **`npx demobite listen`** (founder 2026-10-14 night, "YES!!!!"): the web flow. The machine checks in to the app with the person's recorder key (`PUT /api/recorder/listen`), pulls the jobs the Create tab's Agentic Capture created for its owner, runs the person's own Claude Code headless with the recorder skill in LISTENING MODE, and posts every moment back — started, waiting for the sign-in, signed in, the storyboard box, filming step n of N, delivered, ready with the editor link. One verb, record, for the owner only; closing the terminal ends it. `--base <url>` for dev or a preview; `--name`.
+- `scripts/listen-event.mjs` (the mailbox; a no-op outside listening), `storyboard.mjs await` (the box to the app, the answer back: film / change / cancelled), hooks in signin.mjs, record.mjs, stage-wait.mjs. The recorder skill's "Listening mode" section: never ask anything in the chat.
+
 ### 1.8.3
 
 - The run ends on ONE line: "✓ Ready — open it: <the demo's editor>" — after `upload.mjs`, `status.mjs <takeDir>` waits for the demo to complete (the receipt law stands: no editor link before it is ready), then the link, and nothing after it. Findings about the recorder, the installer or DemoBites go to `.recorder/notes.md`, never to the person (founder 2026-10-14: "all this nonsense and all this explanation is not relevant").
