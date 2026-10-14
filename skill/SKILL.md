@@ -88,6 +88,8 @@ Write the answers to `.recorder/config.json` and never ask again:
 
 ## Phase 1a: The address and the sign-in — in the FIRST reply
 
+The plugin's record door does this step BEFORE loading this file (so the window opens within seconds, not after you have read these pages). If `signin.mjs --check <url>` already says "session", or the window is already open, skip this phase — never ask the sign-in question twice.
+
 Work out the starting address yourself, in seconds: the person's words if they named one, else `url` in `.recorder/config.json`, else the codebase (the app's dev server, the route the brief points at). Then:
 
 ```bash
