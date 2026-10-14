@@ -53,6 +53,7 @@ const additionalContext = [
     : "If they answer Go: run the /demobites:setup skill. It installs, announces the approval link and opens it at once — never ask again.",
   "If they ask for a demo instead: run the /demobites:record skill, which sets up and connects by itself and then films their brief.",
   "Never open a browser page silently: the line before it always says it is about to open.",
+  "The approval page opens in the person's own browser, by the login command itself. Never open that link with a browser tool, a Playwright or browser MCP, or any automation: its bot check fails there and the person cannot sign in.",
 ].join("\n");
 
 process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } }));

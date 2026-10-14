@@ -25,7 +25,8 @@ before; and no second question when they already asked for a demo):**
    this project to your DemoBites account." Keep the brief the human gave: once
    connected, go straight on with it, never ask for it again.
 2. Then, at once, run `node scripts/login.mjs`. It prints the link and code,
-   opens the approval page, and polls. The human approves in their own
+   opens the approval page, and polls.
+      **The page opens in the person's OWN browser, by the command itself — never through you.** Never open the link with a browser tool, a Playwright or browser MCP, a `navigate` call or any automation: the sign-in page runs a bot check (Cloudflare Turnstile) that fails in an automated browser, and the person cannot sign in there (founder's test, 2026-10-14). If the browser did not open, give the person the address and the code from the terminal to open themselves, and keep waiting. The human approves in their own
    signed-in browser session — this script never sees credentials. The key
    lands in config (chmod 600).
 3. If their DemoBites session is signed out, the browser shows the normal
