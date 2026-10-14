@@ -30,6 +30,8 @@ npx demobite login
 
 It prints a code, opens the approval page, and waits. The person approves in their own signed-in DemoBites session; this command never sees credentials. If they mention a login screen: the normal sign-in comes first and the approval page follows with the same code.
 
+**The page opens in the person's OWN browser, by the command itself — never through you.** Never open the link with a browser tool, a Playwright or browser MCP, a `navigate` call or any automation: the sign-in page runs a bot check (Cloudflare Turnstile) that fails in an automated browser, and the person cannot sign in there (founder's test, 2026-10-14). If the browser did not open, give the person the address and the code from the terminal to open themselves, and keep waiting.
+
 Outcomes are answers, never obstacles:
 - approved → "Connected — workspace <name>. Ask me for a demo whenever you want: 'record a demo of the new billing page'."
 - denied → "The link was not approved, nothing was connected." Full stop; never re-run login after a denial.

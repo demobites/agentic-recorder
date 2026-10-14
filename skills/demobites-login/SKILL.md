@@ -16,6 +16,8 @@ npx demobite login
 
 It prints the link and code, opens the approval page, and polls. If the DemoBites session is signed out, the normal sign-in page comes first and the approval page follows with the same code — say this if the person mentions a login screen. The key lands in `.recorder/config.json` (chmod 600), per project.
 
+**The page opens in the person's OWN browser, by the command itself — never through you.** Never open the link with a browser tool, a Playwright or browser MCP, a `navigate` call or any automation: the sign-in page runs a bot check (Cloudflare Turnstile) that fails in an automated browser, and the person cannot sign in there (founder's test, 2026-10-14). If the browser did not open, give the person the address and the code from the terminal to open themselves, and keep waiting.
+
 3. Outcomes are answers, never obstacles:
    - approved → "Connected — workspace <name>." Move on.
    - denied → "The link was not approved, nothing was connected." Full stop. NEVER re-run login after a denial; sign-in happens again only when the person asks.

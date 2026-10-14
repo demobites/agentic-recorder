@@ -14,6 +14,10 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 
 ## Changelog
 
+### 1.7.5
+
+- The approval page opens in the person's own browser, by `login.mjs` itself — never through a browser tool, a Playwright or browser MCP, or any automation (the sign-in page's bot check fails there). Every skill, the npm recorder skill and the session-start hook say so. Found in the founder's ground-zero test: a project with the Playwright plugin enabled saw Claude open the link in the automated browser and Cloudflare refuse the sign-in.
+
 ### 1.7.4
 
 - The connection is announced, never asked (founder 2026-10-14, refining the 2026-08-09 law): setup, login and the record door say "Opening the approval link in your browser…" and open it after a counted three seconds (`login.mjs` prints the countdown and opens the page on macOS, Windows and Linux) — the person asked for the setup, the login, or a demo, so the page is part of what they asked for. No second "Go". The session-start line says "set it up and connect it".
