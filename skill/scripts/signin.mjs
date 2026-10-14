@@ -86,6 +86,31 @@ if (probe) {
   process.exit(state === "failed" ? 1 : 0);
 }
 
+// NO WALL? (founder 2026-10-14: "open the page and look"; the first listening
+// run waited four minutes on a public site). Give the page a few seconds; if
+// nothing on it asks for a sign-in — no password field, no sign-in path, no
+// bot check — remember the address as open and leave without a word.
+const wallCheck = async () => {
+  try {
+    return await page.evaluate(() => {
+      const pw = document.querySelector('input[type="password"]');
+      const path = location.pathname.toLowerCase();
+      const loginPath = /sign-?in|log-?in|login|auth\b|sso|signup|register/.test(path);
+      const bot = !!document.querySelector('input[name="cf-turnstile-response"], iframe[src*="challenges.cloudflare"], iframe[src*="recaptcha"], iframe[src*="hcaptcha"]');
+      return { wall: !!pw || loginPath || bot };
+    });
+  } catch { return { wall: true }; }
+};
+await page.waitForTimeout(4000);
+const first = await wallCheck();
+if (!first.wall) {
+  const origin = new URL(page.url()).origin;
+  console.log(`✓ No sign-in needed for ${origin}.`);
+  try { const l = readLedger(); l.origins = { ...(l.origins ?? {}), [origin]: new Date().toISOString() }; fs.mkdirSync(path.dirname(ledgerPath), { recursive: true }); fs.writeFileSync(ledgerPath, JSON.stringify(l, null, 2) + "\n"); } catch { /* fine */ }
+  await postEvent("signed_in", { origin, none: true });
+  await ctx.close();
+  process.exit(0);
+}
 console.log("⏳ Waiting for you — sign in in the Chrome window that just opened. Your hands only; nothing you type is seen.");
 await postEvent("signin_wait", { url });
 const started = Date.now();
