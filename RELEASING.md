@@ -14,6 +14,10 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 
 ## Changelog
 
+### 1.8.2
+
+- The record door (both trees) opens the sign-in window BEFORE loading the recorder skill: the first reply within seconds — the brief echoed, the three steps, the address from `.recorder/config.json` or one question, `signin.mjs --check`, the yes/no, the window. The recorder skill's Phase 1a is skipped when already done. (Founder's test 2026-10-14: 1 min 33 to the window, spent reading the 550-line skill and the repository first.)
+
 ### 1.8.1
 
 - The three doors (setup, login, record — both skill trees) carry the "How you talk" voice: results, not work; the closing line is the one line the skill names, nothing before or after; never a list of what was installed, verified or registered (founder 2026-10-14: "Why does the user need to know that?"). The MCP step is silent. An install that fails with "No matching version found" is retried once after 60 s, silently.
