@@ -36,6 +36,8 @@ The recorder ships as a plugin of this repository. Install it once, then run its
 
 Then `/demobites:record`, `/demobites:login`, `/demobites:logout` — or just ask: "record a demo of the new billing page".
 
+You can also skip the setup line: ask for a demo right after the install and the record skill sets the recorder up by itself (once per machine, no browser), asks for one "Go" before opening the approval link, and then films what you asked for. Until the project is connected, every new session opens with one line that says so.
+
 **Codex**
 
 ```

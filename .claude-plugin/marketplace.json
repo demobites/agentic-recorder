@@ -6,7 +6,7 @@
       "name": "demobites",
       "source": "./plugins/claude",
       "description": "Install the DemoBites agentic recorder and connect your account; then ask for a demo and it films your product.",
-      "version": "1.7.2"
+      "version": "1.7.3"
     }
   ]
 }

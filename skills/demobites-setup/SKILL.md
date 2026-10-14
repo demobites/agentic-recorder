@@ -1,6 +1,6 @@
 ---
 name: demobites-setup
-description: Install the DemoBites agentic recorder on this machine and connect this project to a DemoBites account. Run once per project; running it again only reports the current state. Use when the user runs the demobites-setup skill (`$demobites-setup` in Codex, `/demobites-setup` in Cursor), asks to install or set up DemoBites, or asks for a demo before the recorder exists on this machine.
+description: Install the DemoBites agentic recorder on this machine and connect this project to a DemoBites account. Run once per project; running it again only reports the current state. Use when the user runs the demobites-setup skill (`$demobites-setup` in Codex, `/demobites-setup` in Cursor) or asks to install, set up or connect DemoBites. A request for a demo belongs to the demobites-record skill, which sets up by itself.
 ---
 
 # DemoBites setup
@@ -9,7 +9,7 @@ One command does the whole installation; one click in the browser connects the a
 
 ## 1. Install (idempotent)
 
-Run, from the project directory the person records from:
+If `~/.claude/skills/agentic-recorder/SKILL.md` is missing, say first: "Setting up the recorder for the first time. This happens once per machine." Then run, from the project directory the person records from:
 
 ```bash
 npx demobite@latest
@@ -22,7 +22,7 @@ It checks Node (18+ is required and is always present where a coding agent runs)
 Check `.recorder/config.json` in the project directory for `api_key`.
 
 - **Present:** say "Already connected — workspace <name>" (the `workspace.name` in that file) and stop. Do not open a link.
-- **Missing:** TELL, don't act: "The recorder is installed. Connecting it means approving a link in your browser — say Go when you're ready." WAIT for the word. On it, run:
+- **Missing:** TELL, don't act: "Installed. Connecting this project to your DemoBites account means approving a link in your browser — say Go when you're ready." WAIT for the word. On it, run:
 
 ```bash
 npx demobite login

@@ -23,4 +23,4 @@ It prints the link and code, opens the approval page, and polls. If the DemoBite
 
 Switching workspace = `/demobites:logout` then `/demobites:login`; the approval page lets the person pick the workspace.
 
-If the recorder itself is not installed yet (`~/.claude/skills/agentic-recorder/` missing), run `/demobites:setup` instead — it installs and connects in one go.
+If the recorder itself is not installed yet (`~/.claude/skills/agentic-recorder/` missing), run `/demobites:setup` instead — it installs and connects in one go. (A request for a demo needs neither: the record skill installs and connects on its own.)
