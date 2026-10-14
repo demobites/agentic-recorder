@@ -141,6 +141,19 @@ if (needed.length) {
   if (r.status === 0) ok("Playwright ready");
   else warn(`Install failed — run: npm install --prefix ~/.claude/skills/agentic-recorder ${needed.join(" ")}`);
 }
+// Playwright's OWN ffmpeg: recordVideo needs it even when the real Chrome is
+// the browser (founder's test 2026-10-14: the first take failed — the
+// launcher had checked the system ffmpeg, not the one Playwright's capture
+// uses, and with Chrome present `playwright install` never ran). Always.
+{
+  const pw = path.join(dest, "node_modules", "playwright", "cli.js");
+  const marker = path.join(dest, ".pw-ffmpeg-ready");
+  if (!fs.existsSync(marker) && fs.existsSync(pw)) {
+    const r = spawnSync("node", [pw, "install", "ffmpeg"], { stdio: "inherit", cwd: dest });
+    if (r.status === 0) { fs.writeFileSync(marker, new Date().toISOString()); ok("Playwright's video encoder ready"); }
+    else warn(`Playwright's ffmpeg install failed — run: node ${pw} install ffmpeg`);
+  } else if (fs.existsSync(marker)) ok("Playwright's video encoder ready");
+}
 // No Chrome on this machine: fetch Playwright's Chromium once so the first
 // take has a browser. Linux needs the shared libraries too (--with-deps).
 if (!haveChrome) {

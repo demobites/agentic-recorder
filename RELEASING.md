@@ -14,6 +14,11 @@ A bare `npm publish` is refused (`prepublishOnly`): it would ship one name and l
 
 ## Changelog
 
+### 1.8.3
+
+- The run ends on ONE line: "✓ Ready — open it: <the demo's editor>" — after `upload.mjs`, `status.mjs <takeDir>` waits for the demo to complete (the receipt law stands: no editor link before it is ready), then the link, and nothing after it. Findings about the recorder, the installer or DemoBites go to `.recorder/notes.md`, never to the person (founder 2026-10-14: "all this nonsense and all this explanation is not relevant").
+- Launcher: Playwright's own ffmpeg is installed always (`playwright install ffmpeg`), Chrome present or not — the first take on a machine with Chrome failed without it.
+
 ### 1.8.2
 
 - The record door (both trees) opens the sign-in window BEFORE loading the recorder skill: the first reply within seconds — the brief echoed, the three steps, the address from `.recorder/config.json` or one question, `signin.mjs --check`, the yes/no, the window. The recorder skill's Phase 1a is skipped when already done. (Founder's test 2026-10-14: 1 min 33 to the window, spent reading the 550-line skill and the repository first.)
