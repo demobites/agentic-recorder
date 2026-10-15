@@ -2,6 +2,11 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.12.0 — 2026-10-15
+
+- `scripts/look.mjs <url>` + job kind `look`: the moment the person gives an address in the app, the listener looks — reaches it headless in the recorder profile, reads the title, finds a sign-in wall or a bot check, checks the ledger — printing a phrase per step (shown live in the chat) and a `RESULT` the app turns into "open" / "behind a sign-in" / "in with your saved sign-in" / "blocked" / "unreachable".
+- Job kind `signin`: the sign-in window ahead of any brief (`signin.mjs` under the job; `ready` when the session is saved).
+
 ## 1.11.0 — 2026-10-15
 
 - The listener looks alive: a heartbeat line with a clock while it waits ("● Listening · 0:42 · waiting for a demo from the app"), cleared while a job prints — the founder read the quiet prompt as "stuck".

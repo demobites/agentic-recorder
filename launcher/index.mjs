@@ -276,8 +276,42 @@ if (arg === "listen") {
   const waitOff = () => { if (ticker) { clearInterval(ticker); ticker = null; process.stdout.write("\r\x1b[2K"); } };
   waitOn();
 
+  // A look or a sign-in ahead of any brief: one script, its lines shown live
+  // in the app (look phrases), its verdict posted as the job's result.
+  const runLookOrSignin = async (job) => {
+    const isLook = job.kind === "look";
+    const script = path.join(dest, "scripts", isLook ? "look.mjs" : "signin.mjs");
+    console.log(`\n  ${isLook ? "◉ Looking at" : "⚿ Sign-in at"} ${job.url}`);
+    await event(job.id, "started", { machine: name });
+    const { spawn } = await import("node:child_process");
+    const child = spawn("node", [script, job.url], { cwd: process.cwd(), env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+    let verdict = null;
+    let buf = "";
+    child.stdout.on("data", (d) => {
+      buf += d.toString();
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line) continue;
+        if (line.startsWith("RESULT ")) { try { verdict = JSON.parse(line.slice(7)); } catch { verdict = null; } continue; }
+        console.log(`  · ${line}`);
+        if (isLook) void event(job.id, "look", { text: line.slice(0, 200) });
+      }
+    });
+    child.stderr.on("data", (d) => { const t = d.toString().trim(); if (t) console.log(`  ! ${t.split("\n")[0].slice(0, 160)}`); });
+    const code = await new Promise((r) => child.on("close", r));
+    if (isLook) {
+      if (verdict) await event(job.id, "looked", verdict);
+      else await event(job.id, "failed", { message: "The look did not finish" });
+    } else if (code === 0) await event(job.id, "ready", { signedIn: true, url: job.url });
+    else await event(job.id, "failed", { message: "The sign-in did not complete" });
+    console.log(`  ■ ${isLook ? `Look: ${verdict?.access ?? "failed"}` : code === 0 ? "Signed in." : "Sign-in did not complete."}\n`);
+    waitOn();
+  };
+
   const runJob = async (job) => {
     waitOff();
+    if (job.kind === "look" || job.kind === "signin") return runLookOrSignin(job);
     const model = typeof job.model === "string" && job.model ? job.model : JOB_MODEL;
     console.log(`\n  ▶ Job ${job.id}: ${job.brief.slice(0, 100)}${job.brief.length > 100 ? "…" : ""}  (filming on ${model})`);
     if (!agentBin) { await event(job.id, "failed", { message: "Claude Code is not installed on this machine" }); return; }
