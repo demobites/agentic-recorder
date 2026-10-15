@@ -85,7 +85,9 @@ const killListener = () => {
 const printStatus = () => {
   const lock = readJson(LOCK);
   const live = !!(lock?.pid && pidAlive(lock.pid));
-  const st = readJson(STATE);
+  // the facts come from the last check-in; before the first one, from the key's own config
+  const cfgThere = lock?.cwd ? readJson(path.join(lock.cwd, ".recorder", "config.json")) : null;
+  const st = { base: cfgThere?.base ?? null, workspace: cfgThere?.workspace?.name ?? null, ...(readJson(STATE) ?? {}) };
   if (live) {
     console.log(`  ● Listening as "${st?.name ?? os.hostname()}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${(st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com"}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"})`);
     if (st?.at) console.log(`    last check-in ${ago(st.at)} · ${st.busy ? `recording: ${st.job ?? ""}` : "idle"}${st.last_error ? ` · last error: ${st.last_error}` : ""}`);
