@@ -5,6 +5,8 @@
 //   npx demobite@latest login      connect this machine to DemoBites
 //   npx demobite@latest mcp        register the DemoBites management MCP
 //   npx demobite@latest logout     disconnect (revokes the key server-side)
+//   demobite on [--connect <code>] the listener as a LOGIN SERVICE (1.18.0): wakes with the machine, never twice
+//   demobite off | status | logs   the service's switch and its truth
 //   npx demobite record <code>     UPDATE RADAR (1.6.0): list a workflow's approved briefs for the agent
 //                                  (1.7.0: the agent then refines, asks once, gets one yes, films in parallel)
 //
@@ -39,6 +41,80 @@ const readCfg = () => {
   try { return JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "config.json"), "utf8")); }
   catch { return null; }
 };
+// npm next to the Node that runs us (the private runtime the install line puts under ~/.demobite), else the PATH's.
+const npmCmd = (args) => {
+  const here = path.dirname(process.execPath);
+  for (const cli of [path.join(here, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"), path.join(here, "node_modules", "npm", "bin", "npm-cli.js")]) {
+    if (fs.existsSync(cli)) return [process.execPath, [cli, ...args]];
+  }
+  return [process.platform === "win32" ? "npm.cmd" : "npm", args];
+};
+
+// ── THE SERVICE (founder 2026-10-16: "just like Claude Code… demobite status") ──────────────────
+// `demobite on` installs the listener as a login service: it wakes with the machine, restarts when it
+// dies, and needs no Terminal window. One instance ever (a lock with a live pid); `off` removes it;
+// `status` and `logs` tell the truth. Its home is ~/.demobite: the lock, the log, the state, and the
+// working folder the listener runs in (so .recorder/config.json lives in one known place).
+const HOME = process.env.DEMOBITE_HOME || path.join(os.homedir(), ".demobite");
+const SERVICE_CWD = path.join(HOME, "home");
+const LOCK = path.join(HOME, "listen.lock");
+const LOG = path.join(HOME, "listen.log");
+const STATE = path.join(HOME, "state.json");
+const CHILDREN = path.join(HOME, "children.json");
+const SERVICE_LABEL = "com.demobites.listen";
+const SERVICE = process.argv.includes("--service");
+const launcherPath = fileURLToPath(import.meta.url);
+const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
+const writeJson = (f, v) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(v, null, 2) + "\n"); };
+const pidAlive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+const ago = (iso) => { const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000)); return s < 60 ? `${s} s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
+const serviceDef = () => {
+  if (process.platform === "darwin") return { file: path.join(os.homedir(), "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`) };
+  if (process.platform === "linux") return { file: path.join(os.homedir(), ".config", "systemd", "user", "demobite.service") };
+  return { file: path.join(HOME, "service.vbs") };
+};
+const serviceInstalled = () => {
+  if (process.platform === "win32") { const r = spawnSync("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "DemoBites"], { encoding: "utf8" }); return r.status === 0; }
+  return fs.existsSync(serviceDef().file);
+};
+const killListener = () => {
+  const lock = readJson(LOCK);
+  if (lock?.pid && pidAlive(lock.pid)) { try { process.kill(lock.pid, "SIGTERM"); } catch { /* gone */ } return lock.pid; }
+  return null;
+};
+const printStatus = () => {
+  const lock = readJson(LOCK);
+  const live = !!(lock?.pid && pidAlive(lock.pid));
+  const st = readJson(STATE);
+  if (live) {
+    console.log(`  ● Listening as "${st?.name ?? os.hostname()}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${(st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com"}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"})`);
+    if (st?.at) console.log(`    last check-in ${ago(st.at)} · ${st.busy ? `recording: ${st.job ?? ""}` : "idle"}${st.last_error ? ` · last error: ${st.last_error}` : ""}`);
+    console.log(`    working in ${lock.cwd.replace(os.homedir(), "~")}${lock.repo ? ` · code: ${lock.repo}` : ""}`);
+  } else {
+    console.log(`  ○ Not listening.${st?.at ? ` Last check-in ${ago(st.at)}.` : ""}`);
+  }
+  console.log(`    login service: ${serviceInstalled() ? "installed (starts at login, restarts if it dies)" : "not installed"} · run: demobite ${live ? "off" : "on"}`);
+  console.log(`    log: ${LOG.replace(os.homedir(), "~")}`);
+};
+if (arg === "status" && !process.argv[3]) { printStatus(); process.exit(0); }
+if (arg === "logs") {
+  const n = Number(process.argv[3] || 40);
+  let text = ""; try { text = fs.readFileSync(LOG, "utf8"); } catch { /* none */ }
+  const lines = text.trimEnd().split("\n"); console.log(lines.slice(-n).join("\n") || "  (no log yet)"); process.exit(0);
+}
+if (arg === "off") {
+  const def = serviceDef();
+  if (process.platform === "darwin") spawnSync("launchctl", ["bootout", `gui/${process.getuid()}/${SERVICE_LABEL}`], { stdio: "ignore" });
+  else if (process.platform === "linux") spawnSync("systemctl", ["--user", "disable", "--now", "demobite.service"], { stdio: "ignore" });
+  else spawnSync("reg", ["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "DemoBites", "/f"], { stdio: "ignore" });
+  fs.rmSync(def.file, { force: true });
+  const pid = killListener();
+  // the browsers of an interrupted take go with it
+  for (const c of readJson(CHILDREN) ?? []) { try { process.kill(process.platform === "win32" ? c : -c, "SIGTERM"); } catch { /* gone */ } }
+  fs.rmSync(CHILDREN, { force: true });
+  console.log(`  ○ Off.${pid ? ` The listener (pid ${pid}) was stopped.` : ""} The login service is removed. Your key stays; \`demobite on\` brings it back.`);
+  process.exit(0);
+}
 
 console.log(`\ndemobite v${pkg.version} — the DemoBites agentic recorder\n`);
 
@@ -78,7 +154,7 @@ if (arg === "record") {
     console.log("Before we record, this project needs a DemoBites account.\nRun `npx demobite login` (it prints a link to approve in your browser), then run this command again.");
     process.exit(1);
   }
-  const r = spawnSync("node", [briefsScript, "list", "--slug", slug], {
+  const r = spawnSync(process.execPath, [briefsScript, "list", "--slug", slug], {
     stdio: "inherit",
     cwd: process.cwd(),
     env: { ...process.env, DEMOBITE_CLI: "1" },
@@ -136,7 +212,7 @@ const needed = ["playwright", "@ffmpeg-installer/ffmpeg", "@ffprobe-installer/ff
 );
 if (needed.length) {
   console.log(`\n  Installing ${needed.join(", ")} (one-time)…`);
-  const r = spawnSync("npm", ["install", "--prefix", dest, "--silent", "--no-audit", "--no-fund", ...needed], { stdio: "inherit" });
+  const r = spawnSync(...npmCmd(["install", "--prefix", dest, "--silent", "--no-audit", "--no-fund", ...needed]), { stdio: "inherit" });
   if (r.status === 0) ok("Playwright ready");
   else warn(`Install failed — run: npm install --prefix ~/.claude/skills/agentic-recorder ${needed.join(" ")}`);
 }
@@ -148,7 +224,7 @@ if (needed.length) {
   const pw = path.join(dest, "node_modules", "playwright", "cli.js");
   const marker = path.join(dest, ".pw-ffmpeg-ready");
   if (!fs.existsSync(marker) && fs.existsSync(pw)) {
-    const r = spawnSync("node", [pw, "install", "ffmpeg"], { stdio: "inherit", cwd: dest });
+    const r = spawnSync(process.execPath, [pw, "install", "ffmpeg"], { stdio: "inherit", cwd: dest });
     if (r.status === 0) { fs.writeFileSync(marker, new Date().toISOString()); ok("Playwright's video encoder ready"); }
     else warn(`Playwright's ffmpeg install failed — run: node ${pw} install ffmpeg`);
   } else if (fs.existsSync(marker)) ok("Playwright's video encoder ready");
@@ -168,7 +244,7 @@ if (!haveChrome) {
 }
 {
   // Verify both tools actually run (compatibility, not presence).
-  const r = spawnSync("node", [path.join(dest, "scripts", "media-tools.mjs")], { encoding: "utf8" });
+  const r = spawnSync(process.execPath, [path.join(dest, "scripts", "media-tools.mjs")], { encoding: "utf8" });
   const rows = (r.stdout || "").trim().split("\n").filter(Boolean).map((l) => l.split("\t"));
   for (const [tool, source, info] of rows) {
     if (source === "missing") warn(`${tool}: no working build (${info})`);
@@ -177,6 +253,92 @@ if (!haveChrome) {
   if (r.status !== 0) warn("Recording will fail until ffmpeg and ffprobe both work. Re-run this command, or install them on your system.");
 }
 
+
+// ── ON: the listener as a login service (founder 2026-10-16) ─────────────────
+//   demobite on [--connect <code>] [--base <url>] [--name <machine>] [--here]
+// Pairs the machine (the code from the app's banner, once), then writes the login entry and starts
+// it. The listener works in ~/.demobite/home (its key and sign-ins live there) unless --here: then in
+// this folder, which makes the folder's repo the Code the planner reads. Running it twice is harmless.
+if (arg === "on") {
+  const rest = process.argv.slice(3);
+  const flag = (f) => rest.includes(f) ? (rest[rest.indexOf(f) + 1] || "") : "";
+  const here = rest.includes("--here");
+  const cwd = here ? process.cwd() : SERVICE_CWD;
+  fs.mkdirSync(cwd, { recursive: true });
+  fs.mkdirSync(HOME, { recursive: true });
+  const cfgAt = () => readJson(path.join(cwd, ".recorder", "config.json"));
+  const base = (flag("--base") || cfgAt()?.base || "https://app.demobites.com").replace(/\/+$/, "");
+  const code = flag("--connect");
+  if (code || !cfgAt()?.api_key || (flag("--base") && cfgAt()?.base && cfgAt().base.replace(/\/+$/, "") !== base)) {
+    console.log("\n  Connecting this machine to your DemoBites account…\n");
+    const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs"), base, ...(code ? ["--connect", code] : [])], { stdio: "inherit", cwd });
+    if (r.status !== 0) process.exit(r.status ?? 1);
+  }
+  if (!cfgAt()?.api_key) { warn("Not connected. Run the line from the app again."); process.exit(1); }
+  // The service runs a stable copy of this package: the npx cache is not one. The install line puts the
+  // package under ~/.demobite/pkg already; from npx, the package is copied there.
+  let runFrom = launcherPath;
+  if (!runFrom.startsWith(HOME)) {
+    const copyTo = path.join(HOME, "pkg", "node_modules", "demobite");
+    fs.rmSync(copyTo, { recursive: true, force: true });
+    fs.mkdirSync(copyTo, { recursive: true });
+    fs.cpSync(pkgRoot, copyTo, { recursive: true, filter: (src) => !src.includes(`${path.sep}node_modules${path.sep}`) && !src.includes(`${path.sep}.git${path.sep}`) });
+    runFrom = path.join(copyTo, "launcher", "index.mjs");
+  }
+  const name = flag("--name");
+  const args = [process.execPath, runFrom, "listen", "--service", ...(name ? ["--name", name] : [])];
+  const def = serviceDef();
+  const pathEnv = [path.dirname(process.execPath), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"].join(":");
+  // a log that never grows past a few megabytes
+  try { if (fs.statSync(LOG).size > 5 * 1024 * 1024) fs.renameSync(LOG, LOG + ".1"); } catch { /* none */ }
+  if (process.platform === "darwin") {
+    const esc = (t) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+    const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>${SERVICE_LABEL}</string>
+  <key>ProgramArguments</key><array>${args.map((a) => `<string>${esc(a)}</string>`).join("")}</array>
+  <key>WorkingDirectory</key><string>${esc(cwd)}</string>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>${esc(pathEnv)}</string><key>HOME</key><string>${esc(os.homedir())}</string>${process.env.DEMOBITE_HOME ? `<key>DEMOBITE_HOME</key><string>${esc(HOME)}</string>` : ""}</dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>${esc(LOG)}</string>
+  <key>StandardErrorPath</key><string>${esc(LOG)}</string>
+</dict></plist>
+`;
+    fs.mkdirSync(path.dirname(def.file), { recursive: true });
+    spawnSync("launchctl", ["bootout", `gui/${process.getuid()}/${SERVICE_LABEL}`], { stdio: "ignore" });
+    killListener();
+    fs.writeFileSync(def.file, plist);
+    const r = spawnSync("launchctl", ["bootstrap", `gui/${process.getuid()}`, def.file], { encoding: "utf8" });
+    if (r.status !== 0) { warn(`launchctl refused the service: ${(r.stderr || r.stdout || "").trim()}`); process.exit(1); }
+  } else if (process.platform === "linux") {
+    const unit = `[Unit]\nDescription=DemoBites listener\nAfter=network-online.target\n\n[Service]\nExecStart=${args.map((a) => JSON.stringify(a)).join(" ")}\nWorkingDirectory=${cwd}\nEnvironment=PATH=${pathEnv}\n${process.env.DEMOBITE_HOME ? `Environment=DEMOBITE_HOME=${HOME}\n` : ""}Restart=always\nRestartSec=10\nStandardOutput=append:${LOG}\nStandardError=append:${LOG}\n\n[Install]\nWantedBy=default.target\n`;
+    fs.mkdirSync(path.dirname(def.file), { recursive: true });
+    fs.writeFileSync(def.file, unit);
+    killListener();
+    spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore" });
+    const r = spawnSync("systemctl", ["--user", "enable", "--now", "demobite.service"], { encoding: "utf8" });
+    if (r.status !== 0) { warn(`systemd refused the service: ${(r.stderr || "").trim()}`); process.exit(1); }
+  } else {
+    // Windows: a Run entry that starts the listener hidden at logon (no console window), via a tiny script.
+    const q = (t) => `""${t}""`;
+    const vbs = `Set sh = CreateObject("WScript.Shell")\nsh.CurrentDirectory = "${cwd}"\nsh.Run "${args.map((a) => q(a)).join(" ")} >> ${q(LOG)} 2>&1", 0, False\n`;
+    fs.writeFileSync(def.file, vbs);
+    spawnSync("reg", ["add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "DemoBites", "/t", "REG_SZ", "/d", `wscript.exe "${def.file}"`, "/f"], { stdio: "ignore" });
+    killListener();
+    spawnSync("wscript.exe", [def.file], { stdio: "ignore" });
+  }
+  // a moment for the first check-in, then the truth
+  const until = Date.now() + 8000;
+  while (Date.now() < until) { const l = readJson(LOCK); if (l?.pid && pidAlive(l.pid) && l.service) break; spawnSync(process.execPath, ["-e", "setTimeout(()=>{},400)"]); }
+  console.log("");
+  printStatus();
+  console.log("\n  It starts with the machine from now on. No window to keep open.\n");
+  process.exit(0);
+}
 
 // ── LISTENING (founder 2026-10-14 night, "YES!!!!"): `npx demobite listen`.
 // The machine checks in to the app with the person's recorder key, pulls
@@ -194,11 +356,29 @@ if (arg === "listen") {
   const connectCode = argvRest.includes("--connect") ? (argvRest[argvRest.indexOf("--connect") + 1] || "") : "";
   if (connectCode || !cfg?.api_key || (argvRest.includes("--base") && cfg?.base && cfg.base.replace(/\/+$/, "") !== base)) {
     console.log(`\n  Connecting this ${connectCode ? "machine" : "project"} to your DemoBites account first…\n`);
-    const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs"), base, ...(connectCode ? ["--connect", connectCode] : [])], { stdio: "inherit", cwd: process.cwd() });
+    const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs"), base, ...(connectCode ? ["--connect", connectCode] : [])], { stdio: "inherit", cwd: process.cwd() });
     if (r.status !== 0) process.exit(r.status ?? 1);
     cfg = readCfg();
   }
   if (!cfg?.api_key) { warn("Not connected — run: npx demobite login"); process.exit(1); }
+  // ONE LISTENER (founder 2026-10-16: "it can never run twice"): a lock with a live pid. A second start,
+  // from a Terminal or a double-pasted line, says who is listening and leaves.
+  fs.mkdirSync(HOME, { recursive: true });
+  {
+    const cur = readJson(LOCK);
+    if (cur?.pid && cur.pid !== process.pid && pidAlive(cur.pid)) {
+      console.log(`  ● Already listening (pid ${cur.pid}, since ${new Date(cur.since).toLocaleTimeString()}${cur.service ? ", the login service" : ""}). Nothing to do.\n    demobite status · demobite off`);
+      process.exit(0);
+    }
+    // the browsers of a listener that died hard
+    for (const c of readJson(CHILDREN) ?? []) { try { process.kill(process.platform === "win32" ? c : -c, "SIGKILL"); } catch { /* gone */ } }
+    fs.rmSync(CHILDREN, { force: true });
+  }
+  process.title = "demobite";
+  const children = new Set();
+  const track = (child) => { if (!child?.pid) return; children.add(child.pid); writeJson(CHILDREN, [...children]); child.on("close", () => { children.delete(child.pid); writeJson(CHILDREN, [...children]); }); };
+  const bye = (sig) => { for (const c of children) { try { process.kill(process.platform === "win32" ? c : -c, "SIGTERM"); } catch { /* gone */ } } try { if (readJson(LOCK)?.pid === process.pid) fs.rmSync(LOCK, { force: true }); } catch { /* fine */ } fs.rmSync(CHILDREN, { force: true }); process.exit(sig === "SIGINT" ? 130 : 0); };
+  process.on("SIGTERM", () => bye("SIGTERM")); process.on("SIGINT", () => bye("SIGINT")); process.on("SIGHUP", () => bye("SIGHUP"));
   const listenFile = path.join(process.cwd(), ".recorder", "listen.json");
   let listen = {};
   try { listen = JSON.parse(fs.readFileSync(listenFile, "utf8")); } catch { /* first time */ }
@@ -241,6 +421,8 @@ if (arg === "listen") {
     const m = r.stdout.trim().match(/[:/]([^/:]+\/[^/]+?)(?:\.git)?$/);
     return m ? m[1] : null;
   })();
+  writeJson(LOCK, { pid: process.pid, since: new Date().toISOString(), cwd: process.cwd(), service: SERVICE, repo });
+  const noteState = (extra) => writeJson(STATE, { at: new Date().toISOString(), machine_id: listen.machine_id, name, base, workspace: cfg.workspace?.name ?? null, ...extra });
   const readiness = () => {
     let signins = [];
     try { signins = Object.keys(JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "signins.json"), "utf8")).origins || {}); } catch { /* none */ }
@@ -249,9 +431,10 @@ if (arg === "listen") {
   const api = async (body) => {
     try {
       const res = await fetch(`${base}/api/recorder/listen`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.api_key}` }, body: JSON.stringify(body) });
-      if (res.status === 401) { console.error("\n  The recorder key was refused. Run: npx demobite login"); process.exit(1); }
+      if (res.status === 401) { console.error("\n  The recorder key was refused. Run: demobite login"); noteState({ busy: false, last_error: "the recorder key was refused" }); process.exit(1); }
+      if (body.action === "checkin") noteState({ busy: !!body.busy, job: body.busy ? (readJson(STATE)?.job ?? null) : null, last_error: res.ok ? null : `the app answered ${res.status}` });
       return res.ok ? await res.json() : null;
-    } catch { return null; }
+    } catch (e) { if (body.action === "checkin") noteState({ busy: !!body.busy, last_error: String(e?.message ?? e).slice(0, 120) }); return null; }
   };
   const event = (job_id, kind, payload) => api({ action: "event", job_id, kind, payload });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -259,8 +442,9 @@ if (arg === "listen") {
   console.log(`\n  Listening as "${name}" for ${cfg.workspace?.name ?? "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
   console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${engine === "claude" ? (agentBin ? `Claude Code${agentInfo.agent_version ? " " + agentInfo.agent_version : ""} plans the demos, on your own plan; they film on ${JOB_MODEL} unless you pick another model in the app.` : "! --engine=claude, but Claude Code was not found on this machine.") : `Demos are planned by the DemoBites agent on ${JOB_MODEL} (pick another model in the app)${process.env.DEMOBITES_NO_CODE ? "; code sharing is off" : repo ? "; the files it reads from this project are logged in each take" : ""}.`}`);
   // The one thing the person must know, boxed (founder 2026-10-15): this
-  // window is the machine's side of every recording.
-  console.log(`
+  // window is the machine's side of every recording. The login service has no window: one line instead.
+  if (SERVICE) console.log(`  ${new Date().toISOString()} listening (login service, pid ${process.pid})`);
+  else console.log(`
   ┌──────────────────────────────────────────────────────────┐
   │                                                          │
   │   LEAVE THIS WINDOW OPEN                                 │
@@ -274,7 +458,7 @@ if (arg === "listen") {
   // A line that visibly lives (founder: "look at the terminal, it's stuck"):
   // a heartbeat with a clock while we wait, cleared while a job prints.
   const startedAt = Date.now();
-  const tty = !!process.stdout.isTTY;
+  const tty = !!process.stdout.isTTY && !SERVICE;
   let ticker = null;
   const tick = () => {
     const s = Math.floor((Date.now() - startedAt) / 1000);
@@ -292,9 +476,11 @@ if (arg === "listen") {
     const isLook = job.kind === "look";
     const script = path.join(dest, "scripts", isLook ? "look.mjs" : "signin.mjs");
     console.log(`\n  ${isLook ? "◉ Looking at" : "⚿ Sign-in at"} ${job.url}`);
+    noteState({ busy: true, job: job.id });
     await event(job.id, "started", { machine: name });
     const { spawn } = await import("node:child_process");
-    const child = spawn("node", [script, job.url], { cwd: process.cwd(), env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [script, job.url], { cwd: process.cwd(), env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+    track(child);
     let verdict = null;
     let buf = "";
     child.stdout.on("data", (d) => {
@@ -325,6 +511,7 @@ if (arg === "listen") {
     const model = typeof job.model === "string" && job.model ? job.model : JOB_MODEL;
     // Alive while filming (1.13.1): a heartbeat every 5 s so the rail never shows this machine
     // offline mid-take (the gap after the last step used to do exactly that).
+    noteState({ busy: true, job: job.id });
     const heartbeat = setInterval(() => { void api({ action: "checkin", machine_id: listen.machine_id, name, readiness: readiness(), busy: true }); }, 5000);
     console.log(`\n  ▶ Job ${job.id}: ${job.brief.slice(0, 100)}${job.brief.length > 100 ? "…" : ""}  (${engine === "claude" ? "Claude Code" : "DemoBites agent"} on ${model})`);
     if (engine !== "claude") {
@@ -335,7 +522,8 @@ if (arg === "listen") {
       fs.writeFileSync(path.join(takeDir, "job.json"), JSON.stringify({ id: job.id, brief: job.brief, url: job.url ?? null, model, review_storyboard: job.review_storyboard !== false, ...(job.retake_of ? { retake_of: job.retake_of, retake_note: job.retake_note ?? null, storyboard: job.storyboard ?? null } : {}) }, null, 2) + "\n");
       // Spawned async (1.14.1): a spawnSync here blocked the event loop, so the 5 s heartbeat never fired
       // during a take and the rail called the machine offline mid-recording (founder 2026-10-15 17:39).
-      const child = (await import("node:child_process")).spawn("node", [path.join(dest, "scripts", "plan.mjs"), takeDir], { cwd: process.cwd(), stdio: "inherit", env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" } });
+      const child = (await import("node:child_process")).spawn(process.execPath, [path.join(dest, "scripts", "plan.mjs"), takeDir], { cwd: process.cwd(), stdio: "inherit", env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" }, detached: process.platform !== "win32" });
+      track(child);
       const code = await new Promise((resolve) => child.on("close", resolve));
       const st = await api({ action: "poll", job_id: job.id });
       if (st && !["ready", "failed", "cancelled"].includes(st.status)) await event(job.id, "failed", { message: code === 0 ? "The demo did not come through — try again" : `The take stopped (exit ${code})` });
@@ -398,7 +586,7 @@ if (arg === "login" || arg === "logout") {
   // `login <base>` forwards the base (dev, a preview) to login.mjs, which
   // resolves it before config.base and the production default. Logout
   // forwards nothing extra: the key's own home always wins there.
-  const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs"), ...(arg === "logout" ? ["--logout"] : process.argv.slice(3))], {
+  const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs"), ...(arg === "logout" ? ["--logout"] : process.argv.slice(3))], {
     stdio: "inherit",
     cwd: process.cwd(),
   });
@@ -440,12 +628,12 @@ if (arg === "retake") {
   let cfg = readCfg();
   if (!cfg?.api_key) {
     console.log("\n  Not connected yet — linking this machine to DemoBites first…\n");
-    const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs")], { stdio: "inherit", cwd: process.cwd() });
+    const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs")], { stdio: "inherit", cwd: process.cwd() });
     if (r.status !== 0) process.exit(r.status ?? 1);
     cfg = readCfg();
   }
   if (!cfg?.api_key) { warn("Login did not complete — run: npx demobite login"); process.exit(1); }
-  const r = spawnSync("node", [path.join(dest, "scripts", "retake.mjs"), ...process.argv.slice(3)], { stdio: "inherit", cwd: process.cwd() });
+  const r = spawnSync(process.execPath, [path.join(dest, "scripts", "retake.mjs"), ...process.argv.slice(3)], { stdio: "inherit", cwd: process.cwd() });
   process.exit(r.status ?? 1);
 }
 
@@ -456,12 +644,12 @@ if (arg === "briefs" || arg === "status" || arg === "rules") {
   let cfg = readCfg();
   if (!cfg?.api_key) {
     console.log("\n  Not connected yet — linking this machine to DemoBites first…\n");
-    const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs")], { stdio: "inherit", cwd: process.cwd() });
+    const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs")], { stdio: "inherit", cwd: process.cwd() });
     if (r.status !== 0) process.exit(r.status ?? 1);
     cfg = readCfg();
   }
   if (!cfg?.api_key) { warn("Login did not complete — run: npx demobite login"); process.exit(1); }
-  const r = spawnSync("node", [path.join(dest, "scripts", `${arg}.mjs`), ...process.argv.slice(3)], { stdio: "inherit", cwd: process.cwd() });
+  const r = spawnSync(process.execPath, [path.join(dest, "scripts", `${arg}.mjs`), ...process.argv.slice(3)], { stdio: "inherit", cwd: process.cwd() });
   process.exit(r.status ?? 1);
 }
 
@@ -469,7 +657,7 @@ if (arg === "mcp") {
   let cfg = readCfg();
   if (!cfg?.api_key) {
     console.log("\n  Not connected yet — linking this machine to DemoBites first…\n");
-    const r = spawnSync("node", [path.join(dest, "scripts", "login.mjs")], { stdio: "inherit", cwd: process.cwd() });
+    const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs")], { stdio: "inherit", cwd: process.cwd() });
     if (r.status !== 0) process.exit(r.status ?? 1);
     cfg = readCfg();
   }
