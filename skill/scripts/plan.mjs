@@ -41,6 +41,12 @@ const ensureSignin = async (url) => {
   if (!url) return;
   const check = run("signin.mjs", ["--check", url]);
   if (check.status === 0) return;
+  // Not in the ledger yet: look first, headless. An open page, or one the profile is already signed
+  // into, needs no window (the window is for a wall, and only for a wall).
+  const look = run("look.mjs", [url]);
+  const last = (look.stdout || "").trim().split("\n").filter((l) => l.startsWith("RESULT ")).pop();
+  let verdict = null; try { verdict = JSON.parse(last.slice(7)); } catch { /* none */ }
+  if (verdict && (verdict.access === "open" || verdict.access === "signed")) return;
   console.log(`  Sign-in needed at ${new URL(url).origin}; opening the Chrome window.`);
   const r = spawnSync("node", [script("signin.mjs"), url], { cwd: process.cwd(), stdio: "inherit", env: process.env });
   if (r.status !== 0) { await postEvent("failed", { message: "Nobody signed in, so the demo did not start" }); process.exit(1); }
