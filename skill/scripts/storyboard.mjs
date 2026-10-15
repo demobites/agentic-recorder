@@ -63,7 +63,8 @@ if (mode === "await") {
   rows.forEach((r, i) => boxOut.push(`│ ${`${String(i + 1).padStart(2)}  ${mmss(r.at)}  ${cap2(r.text + (r.pointed ? " — pointed at, not pressed" : ""), W2 - 14)}`.padEnd(W2 - 2)} │`));
   boxOut.push(`│ ${"".padEnd(W2 - 2)} │`); boxOut.push(`└${"─".repeat(W2)}┘`);
   if (!listening) { console.log(boxOut.join("\n")); console.log("film"); process.exit(0); }
-  await postEvent("storyboard", { box: boxOut.join("\n"), total: mmss(total), steps: rows.map((r, i) => ({ n: i + 1, at: mmss(r.at), text: r.text, pointed: r.pointed })) });
+  // The whole storyboard rides along (1.17.0): a retake starts from it, selectors and all.
+  await postEvent("storyboard", { box: boxOut.join("\n"), total: mmss(total), steps: rows.map((r, i) => ({ n: i + 1, at: mmss(r.at), text: r.text, pointed: r.pointed })), storyboard: sb });
   const started = Date.now();
   while (Date.now() - started < 30 * 60 * 1000) {
     const st = await poll();

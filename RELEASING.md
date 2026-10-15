@@ -2,6 +2,10 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.17.0 — 2026-10-15
+
+- RETAKE (founder: "a button that sits inside the demo only if it was taken by an agentic recorder… the main motivation is that something happened differently in the visual… mimicking the same thing all over again"). A job with `retake_of` carries the previous storyboard and the person's note; the launcher hands both to the planner, which keeps the steps and the lines, probes, fixes only what moved, and films without a review.
+
 ## 1.16.0 — 2026-10-15
 
 - THE APPROVED STORY (founder, bite 1228: "the storyteller is blabbing… this 52-second video could have been 25 to 30 seconds"). The manifest now carries `narration_approved: true`: the lines the person said Film it to are the demo's lines, verbatim. DemoBites no longer writes a filler into a silence ("Let's open it up and see how it is set up") or a longer line into a longer beat.

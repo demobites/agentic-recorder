@@ -197,7 +197,11 @@ const firstMessage = () => {
     `## The app's words on the starting screen\n${vocab}`,
     `## Workspace rules (version ${rules.version || 0})\n${rules.lines?.length ? rules.lines.map((l, i) => `${i + 1}. ${l}`).join("\n") : "(none)"}`,
     `## The project's files${codeOn ? " (this machine sits in the app's repository; read_file is on)" : " (no code here)"}\n${listFiles()}`,
-    codeOn ? `Write the storyboard, probe it, fix it, probe again, then submit_storyboard.` : `There is no code: explore first (explore from the starting address, looking_for = the brief's nouns), then write the storyboard, probe it, fix it, probe again, then submit_storyboard.`,
+    // A RETAKE (founder 2026-10-15): the same demo again, because the app changed under it. The previous
+    // storyboard is the base; the note says what to keep an eye on; the probe finds what moved.
+    job.retake_of && job.storyboard
+      ? `## This is a retake\nThe person wants the same demo filmed again, the same length and the same shots, because the app changed since. Their note: "${(job.retake_note || "no note").replace(/"/g, "'")}". ${job.storyboard.storyboard ? "Start from the previous storyboard below: keep its steps and its lines; probe it; fix only what no longer resolves or what the note names; then submit_storyboard. Never explore when the probe passes." : "Only the previous storyboard's lines survive (below): rebuild the same steps with the same lines, find the controls again, probe, then submit_storyboard."}\n\n## The previous storyboard\n${JSON.stringify(job.storyboard.storyboard ?? job.storyboard.steps ?? job.storyboard)}`
+      : codeOn ? `Write the storyboard, probe it, fix it, probe again, then submit_storyboard.` : `There is no code: explore first (explore from the starting address, looking_for = the brief's nouns), then write the storyboard, probe it, fix it, probe again, then submit_storyboard.`,
   ];
   return parts.join("\n\n");
 };
