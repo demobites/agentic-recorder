@@ -16,6 +16,8 @@ if (!dir) {
   process.exit(2);
 }
 import { ffmpeg as FFMPEG, ffprobe as FFPROBE, requireMediaTools } from "./media-tools.mjs";
+const postEvent = await import("./listen-event.mjs").then((m) => m.postEvent).catch(() => async () => null);
+void postEvent("finishing", { text: "Trimming the take to the real first and last frame…" });
 requireMediaTools();
 
 const raw = path.join(dir, "raw.webm");

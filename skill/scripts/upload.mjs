@@ -26,6 +26,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+const postEvent = await import("./listen-event.mjs").then((m) => m.postEvent).catch(() => async () => null);
 
 const dir = process.argv[2];
 if (!dir) {
@@ -180,6 +181,7 @@ function storeZip(name, data) {
   return Buffer.concat([local, nameBuf, data, central, nameBuf, eocd]);
 }
 
+void postEvent("finishing", { text: "Packing the take…" });
 const zipPath = path.join(dir, "take.zip");
 fs.rmSync(zipPath, { force: true });
 const staging = fs.mkdtempSync(path.join(os.tmpdir(), "rec-zip-"));
@@ -261,6 +263,7 @@ if (!stagingId || !uploadUrl || !previewUploadUrl) {
 
 // ── S3 PUTs: the ZIP for ingestion, the MP4 for the preview player ─────────
 console.log("Uploading take...");
+void postEvent("finishing", { text: "Uploading the take to your workspace…" });
 async function putS3(url, contentType, filePath, label) {
   let res;
   try {
