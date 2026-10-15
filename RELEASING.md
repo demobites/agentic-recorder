@@ -2,6 +2,10 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.15.0 — 2026-10-15
+
+- EXPLORE (founder: "a very short exploration if the brief isn't enough… the customer needs nothing but identity"). Without the app's code the planner asks the listener to look around: `scripts/explore.mjs` walks the live app headless on the camera's profile from the start address, following the nav links, tabs and menus whose words match the brief's nouns, two hops deep (ten screens or 75 s at most), and returns every screen's address, title, headings, tabs and controls with screenshots of the best matches; each screen found is a line in the chat. Links, tabs and menu openers only; never a button that submits, creates, deletes or pays. Three explorations per storyboard at most.
+
 ## 1.14.1 — 2026-10-15
 
 - The built-in agent's take is spawned asynchronously: the heartbeat kept firing while Claude Code filmed, but 1.14.0 blocked on the planner and the rail called the machine offline mid-recording (Identity and Code went grey while it filmed).
