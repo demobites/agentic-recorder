@@ -2,6 +2,10 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.13.1 — 2026-10-15
+
+- Heartbeat while filming every 5 s (was 20 s): the app now calls a machine offline after 15 s of silence, so a dead terminal shows within seconds and a filming one never flickers.
+
 ## 1.13.0 — 2026-10-15
 
 - The end of a take talks: `finishing` events ("Camera off. Saving the take…", "Trimming…", "Packing…", "Uploading the take to your workspace…") between the last filmed step and "delivered" — the founder waited 30 s on "step 7 of 7" with nothing said.
