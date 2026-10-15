@@ -313,6 +313,9 @@ if (arg === "listen") {
     waitOff();
     if (job.kind === "look" || job.kind === "signin") return runLookOrSignin(job);
     const model = typeof job.model === "string" && job.model ? job.model : JOB_MODEL;
+    // Alive while filming (1.13.0): a heartbeat every 20 s so the rail never shows this machine
+    // offline mid-take (the gap after the last step used to do exactly that).
+    const heartbeat = setInterval(() => { void api({ action: "checkin", machine_id: listen.machine_id, name, readiness: readiness(), busy: true }); }, 20000);
     console.log(`\n  ▶ Job ${job.id}: ${job.brief.slice(0, 100)}${job.brief.length > 100 ? "…" : ""}  (filming on ${model})`);
     if (!agentBin) { await event(job.id, "failed", { message: "Claude Code is not installed on this machine" }); return; }
     await event(job.id, "started", { machine: name });
@@ -351,6 +354,7 @@ if (arg === "listen") {
       if (code === 0) await event(job.id, "note", { text: "The agent finished without a ready signal." });
       await event(job.id, "failed", { message: code === 0 ? "The demo did not come through — try again" : `The agent stopped (exit ${code})` });
     }
+    clearInterval(heartbeat);
     console.log(`  ■ Job ${job.id} ${st?.status ?? "ended"}.\n`);
     waitOn();
   };

@@ -2,6 +2,11 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.13.0 — 2026-10-15
+
+- The end of a take talks: `finishing` events ("Camera off. Saving the take…", "Trimming…", "Packing…", "Uploading the take to your workspace…") between the last filmed step and "delivered" — the founder waited 30 s on "step 7 of 7" with nothing said.
+- Heartbeat while filming: the listener checks in every 20 s with `busy: true` (the app touches last_seen and assigns nothing), so the rail never shows the machine offline mid-take.
+
 ## 1.12.0 — 2026-10-15
 
 - `scripts/look.mjs <url>` + job kind `look`: the moment the person gives an address in the app, the listener looks — reaches it headless in the recorder profile, reads the title, finds a sign-in wall or a bot check, checks the ledger — printing a phrase per step (shown live in the chat) and a `RESULT` the app turns into "open" / "behind a sign-in" / "in with your saved sign-in" / "blocked" / "unreachable".

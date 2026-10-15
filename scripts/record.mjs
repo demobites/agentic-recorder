@@ -1211,6 +1211,7 @@ try {
 
 clearInterval(sampler);
 manifest.duration = t();
+void postEvent("finishing", { text: "Camera off. Saving the take…" });
 const video = page.video();
 await ctx.close();
 if (video) {
