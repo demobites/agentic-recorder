@@ -210,6 +210,19 @@ if (arg === "listen") {
   }
   const name = (argvRest[argvRest.indexOf("--name") + 1] && argvRest.includes("--name")) ? argvRest[argvRest.indexOf("--name") + 1] : os.hostname().replace(/\.local$/, "");
   const agentBin = (() => { const r = spawnSync(process.platform === "win32" ? "where" : "which", ["claude"], { encoding: "utf8" }); return r.status === 0 ? r.stdout.trim().split("\n")[0] : null; })();
+  // What the agent is (version) and how it is set (the person's model and
+  // effort in ~/.claude/settings.json) — the rail shows it, the chat agent can
+  // speak to it. The model that FILMS is ours (JOB_MODEL), passed per job: the
+  // output quality is DemoBites' to defend, never a hidden knob on the machine.
+  const JOB_MODEL = process.env.DEMOBITES_JOB_MODEL || "sonnet";
+  const agentInfo = (() => {
+    if (!agentBin) return { agent: null, agent_version: null, model: null, effort: null, job_model: null };
+    const v = spawnSync(agentBin, ["--version"], { encoding: "utf8", timeout: 8000 });
+    const version = v.status === 0 ? (v.stdout.trim().match(/\d+\.\d+(?:\.\d+)?/) || [null])[0] : null;
+    let settings = {};
+    try { settings = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude", "settings.json"), "utf8")); } catch { /* defaults */ }
+    return { agent: "Claude Code", agent_version: version, model: typeof settings.model === "string" ? settings.model : null, effort: typeof settings.effortLevel === "string" ? settings.effortLevel : (typeof settings.effort === "string" ? settings.effort : null), job_model: JOB_MODEL };
+  })();
   // The repo this listener was started in (the Code signal on the rail): the
   // git remote's owner/name, or null when the folder is not a repo.
   const repo = (() => {
@@ -221,7 +234,7 @@ if (arg === "listen") {
   const readiness = () => {
     let signins = [];
     try { signins = Object.keys(JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "signins.json"), "utf8")).origins || {}); } catch { /* none */ }
-    return { agent: agentBin ? "Claude Code" : null, chrome: haveChrome, recorder: pkg.version, signins, cwd: process.cwd(), platform: process.platform, repo };
+    return { ...agentInfo, chrome: haveChrome, recorder: pkg.version, signins, cwd: process.cwd(), platform: process.platform, repo };
   };
   const api = async (body) => {
     try {
@@ -234,7 +247,7 @@ if (arg === "listen") {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   console.log(`\n  Listening as "${name}" for ${cfg.workspace?.name ?? "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
-  console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${agentBin ? "Claude Code found." : "! Claude Code was not found on this machine — install it and sign in, it does the thinking."}`);
+  console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${agentBin ? `Claude Code${agentInfo.agent_version ? " " + agentInfo.agent_version : ""} found; demos film on ${JOB_MODEL}.` : "! Claude Code was not found on this machine — install it and sign in, it does the thinking."}`);
   console.log("  Leave this terminal open; closing it stops the listening.\n");
 
   const runJob = async (job) => {
@@ -247,7 +260,7 @@ if (arg === "listen") {
       job.url ? `Address to start from: ${job.url}` : "Address: work it out from this project (the saved config, the codebase).",
       `Show the storyboard before filming: ${job.review_storyboard ? "yes — run storyboard.mjs await and obey its answer" : "no — storyboard.mjs await returns film at once"}.`,
     ].join("\n");
-    const child = (await import("node:child_process")).spawn(agentBin, ["-p", prompt, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"], {
+    const child = (await import("node:child_process")).spawn(agentBin, ["-p", prompt, "--model", JOB_MODEL, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"], {
       cwd: process.cwd(),
       env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" },
       stdio: ["ignore", "pipe", "pipe"],
