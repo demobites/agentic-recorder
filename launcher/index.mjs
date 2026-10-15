@@ -333,9 +333,12 @@ if (arg === "listen") {
       const takeDir = path.join(process.cwd(), ".recorder", "takes", job.id);
       fs.mkdirSync(takeDir, { recursive: true });
       fs.writeFileSync(path.join(takeDir, "job.json"), JSON.stringify({ id: job.id, brief: job.brief, url: job.url ?? null, model, review_storyboard: job.review_storyboard !== false }, null, 2) + "\n");
-      const r = spawnSync("node", [path.join(dest, "scripts", "plan.mjs"), takeDir], { cwd: process.cwd(), stdio: "inherit", env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" } });
+      // Spawned async (1.14.1): a spawnSync here blocked the event loop, so the 5 s heartbeat never fired
+      // during a take and the rail called the machine offline mid-recording (founder 2026-10-15 17:39).
+      const child = (await import("node:child_process")).spawn("node", [path.join(dest, "scripts", "plan.mjs"), takeDir], { cwd: process.cwd(), stdio: "inherit", env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" } });
+      const code = await new Promise((resolve) => child.on("close", resolve));
       const st = await api({ action: "poll", job_id: job.id });
-      if (st && !["ready", "failed", "cancelled"].includes(st.status)) await event(job.id, "failed", { message: r.status === 0 ? "The demo did not come through — try again" : `The take stopped (exit ${r.status})` });
+      if (st && !["ready", "failed", "cancelled"].includes(st.status)) await event(job.id, "failed", { message: code === 0 ? "The demo did not come through — try again" : `The take stopped (exit ${code})` });
       clearInterval(heartbeat);
       console.log(`  ■ Job ${job.id} ${st?.status ?? "ended"}.\n`);
       waitOn();
