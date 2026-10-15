@@ -2,6 +2,10 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.10.1 — 2026-10-15
+
+- Check-in carries the agent's version and the person's own model/effort settings (`agent_version`, `model`, `effort`) and the model demos film on (`job_model`); the listener passes `--model` per job (default `sonnet`, `DEMOBITES_JOB_MODEL` to change) — the filming model is DemoBites' call, shown on the rail.
+
 ## 1.10.0 — 2026-10-15
 
 - `npx demobite listen --connect <code>`: the line the Agentic Capture chat gives carries a one-time connect code the app already approved for the signed-in person; the machine connects without an approval page or a click (`login.mjs --connect` polls straight away). Without the flag, the device-link flow is unchanged.
