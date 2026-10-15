@@ -116,8 +116,7 @@ const chromePaths = [
 const haveChrome = chromePaths.some((p) => fs.existsSync(p)) || hasBin("google-chrome") || hasBin("google-chrome-stable");
 if (haveChrome) ok("Google Chrome (films with the real browser)");
 else console.log("  · Google Chrome not found — installing Playwright's Chromium for the recorder");
-if (hasBin("claude")) ok("Claude Code (drives the recorder; MCP registers automatically)");
-else warn("Claude Code not found — using Cursor or Codex? They drive the recorder too; MCP setup prints below");
+if (hasBin("claude")) ok("Claude Code found (optional: `--engine=claude` plans demos with it, on your own plan)");
 
 // ── 2. Install / update the skill ──────────────────────────────────────────
 fs.mkdirSync(dest, { recursive: true });
@@ -215,13 +214,24 @@ if (arg === "listen") {
   // speak to it. The model that FILMS is ours (JOB_MODEL), passed per job: the
   // output quality is DemoBites' to defend, never a hidden knob on the machine.
   const JOB_MODEL = process.env.DEMOBITES_JOB_MODEL || "sonnet";
+  // THE BUILT-IN AGENT (1.14.0, founder 2026-10-15): demos are planned by DemoBites' own planner
+  // (scripts/plan.mjs ↔ PUT /api/recorder/agent) and filmed by the camera scripts; no coding agent
+  // needed on the machine. Claude Code stays an option: `--engine=claude` (or DEMOBITES_ENGINE=claude)
+  // plans with it instead, on the person's own plan, and their code never passes through DemoBites.
+  const engine = (argvRest.find((a) => a.startsWith("--engine=")) || "").slice(9) || process.env.DEMOBITES_ENGINE || "builtin";
+  const claudeVersion = (() => {
+    if (!agentBin) return null;
+    const v = spawnSync(agentBin, ["--version"], { encoding: "utf8", timeout: 8000 });
+    return v.status === 0 ? (v.stdout.trim().match(/\d+\.\d+(?:\.\d+)?/) || [null])[0] : null;
+  })();
   const agentInfo = (() => {
-    if (!agentBin) return { agent: null, agent_version: null, model: null, effort: null, job_model: null };
+    if (engine !== "claude") return { agent: "DemoBites agent", agent_version: pkg.version, engine: "builtin", claude_version: claudeVersion, code_sharing: !process.env.DEMOBITES_NO_CODE, model: null, effort: null, job_model: JOB_MODEL };
+    if (!agentBin) return { agent: null, agent_version: null, engine: "claude", model: null, effort: null, job_model: null };
     const v = spawnSync(agentBin, ["--version"], { encoding: "utf8", timeout: 8000 });
     const version = v.status === 0 ? (v.stdout.trim().match(/\d+\.\d+(?:\.\d+)?/) || [null])[0] : null;
     let settings = {};
     try { settings = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".claude", "settings.json"), "utf8")); } catch { /* defaults */ }
-    return { agent: "Claude Code", agent_version: version, model: typeof settings.model === "string" ? settings.model : null, effort: typeof settings.effortLevel === "string" ? settings.effortLevel : (typeof settings.effort === "string" ? settings.effort : null), job_model: JOB_MODEL };
+    return { agent: "Claude Code", agent_version: version, engine: "claude", model: typeof settings.model === "string" ? settings.model : null, effort: typeof settings.effortLevel === "string" ? settings.effortLevel : (typeof settings.effort === "string" ? settings.effort : null), job_model: JOB_MODEL };
   })();
   // The repo this listener was started in (the Code signal on the rail): the
   // git remote's owner/name, or null when the folder is not a repo.
@@ -247,7 +257,7 @@ if (arg === "listen") {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   console.log(`\n  Listening as "${name}" for ${cfg.workspace?.name ?? "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
-  console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${agentBin ? `Claude Code${agentInfo.agent_version ? " " + agentInfo.agent_version : ""} found; demos film on ${JOB_MODEL} unless you pick another model in the app.` : "! Claude Code was not found on this machine — install it and sign in, it does the thinking."}`);
+  console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${engine === "claude" ? (agentBin ? `Claude Code${agentInfo.agent_version ? " " + agentInfo.agent_version : ""} plans the demos, on your own plan; they film on ${JOB_MODEL} unless you pick another model in the app.` : "! --engine=claude, but Claude Code was not found on this machine.") : `Demos are planned by the DemoBites agent on ${JOB_MODEL} (pick another model in the app)${process.env.DEMOBITES_NO_CODE ? "; code sharing is off" : repo ? "; the files it reads from this project are logged in each take" : ""}.`}`);
   // The one thing the person must know, boxed (founder 2026-10-15): this
   // window is the machine's side of every recording.
   console.log(`
@@ -256,7 +266,7 @@ if (arg === "listen") {
   │   LEAVE THIS WINDOW OPEN                                 │
   │                                                          │
   │   It is your machine's side of every recording:          │
-  │   the camera, the sign-ins, the coding agent run here.   │
+  │   the camera, the sign-ins and the planning run here.    │
   │   Closing it, or Ctrl-C, stops the listening.            │
   │                                                          │
   └──────────────────────────────────────────────────────────┘
@@ -316,8 +326,22 @@ if (arg === "listen") {
     // Alive while filming (1.13.1): a heartbeat every 5 s so the rail never shows this machine
     // offline mid-take (the gap after the last step used to do exactly that).
     const heartbeat = setInterval(() => { void api({ action: "checkin", machine_id: listen.machine_id, name, readiness: readiness(), busy: true }); }, 5000);
-    console.log(`\n  ▶ Job ${job.id}: ${job.brief.slice(0, 100)}${job.brief.length > 100 ? "…" : ""}  (filming on ${model})`);
-    if (!agentBin) { await event(job.id, "failed", { message: "Claude Code is not installed on this machine" }); return; }
+    console.log(`\n  ▶ Job ${job.id}: ${job.brief.slice(0, 100)}${job.brief.length > 100 ? "…" : ""}  (${engine === "claude" ? "Claude Code" : "DemoBites agent"} on ${model})`);
+    if (engine !== "claude") {
+      // The built-in agent: plan.mjs plans with the server's planner, films with the camera scripts.
+      await event(job.id, "started", { machine: name });
+      const takeDir = path.join(process.cwd(), ".recorder", "takes", job.id);
+      fs.mkdirSync(takeDir, { recursive: true });
+      fs.writeFileSync(path.join(takeDir, "job.json"), JSON.stringify({ id: job.id, brief: job.brief, url: job.url ?? null, model, review_storyboard: job.review_storyboard !== false }, null, 2) + "\n");
+      const r = spawnSync("node", [path.join(dest, "scripts", "plan.mjs"), takeDir], { cwd: process.cwd(), stdio: "inherit", env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" } });
+      const st = await api({ action: "poll", job_id: job.id });
+      if (st && !["ready", "failed", "cancelled"].includes(st.status)) await event(job.id, "failed", { message: r.status === 0 ? "The demo did not come through — try again" : `The take stopped (exit ${r.status})` });
+      clearInterval(heartbeat);
+      console.log(`  ■ Job ${job.id} ${st?.status ?? "ended"}.\n`);
+      waitOn();
+      return;
+    }
+    if (!agentBin) { await event(job.id, "failed", { message: "Claude Code is not installed on this machine" }); clearInterval(heartbeat); waitOn(); return; }
     await event(job.id, "started", { machine: name });
     const prompt = [
       "Film a demo with the agentic-recorder skill. Read ~/.claude/skills/agentic-recorder/SKILL.md first and follow it exactly, in LISTENING MODE (its section \"Listening mode\"): the person is watching in the DemoBites app, not here — never ask anything in this conversation; the scripts carry every question to the app and bring the answer back.",

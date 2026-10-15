@@ -2,6 +2,12 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.14.0 — 2026-10-15
+
+- THE BUILT-IN AGENT (founder: "I don't want to say to the customer, you need to have Claude Code on your machine"). `npx demobite listen` no longer needs a coding agent: a demo asked for in the app is planned by DemoBites' own planner (`scripts/plan.mjs` ↔ `PUT <base>/api/recorder/agent`, on DemoBites' bill, the model picked in the app) and filmed by the camera scripts as before. The planner's tools all run on the machine: `harvest_words` (vocab.mjs), `screenshot` (new `peek.mjs`), `probe` (new `probe.mjs`, the headless dry run), `list_files` / `read_file` (only inside a git repository, never secrets, ten files of 12 KB at most, each logged in `<takeDir>/code-shared.log`; `DEMOBITES_NO_CODE=1` turns it off), `submit_storyboard`. The storyboard box, the sign-in window and the pipeline are unchanged.
+- Claude Code is an option, not a requirement: `npx demobite listen --engine=claude` (or `DEMOBITES_ENGINE=claude`) plans with Claude Code on the person's own plan, and their code never passes through DemoBites. The rail shows "DemoBites agent <version>" or "Claude Code <version>" accordingly.
+- Takes of the built-in agent live in `.recorder/takes/<jobId>/`.
+
 ## 1.13.1 — 2026-10-15
 
 - Heartbeat while filming every 5 s (was 20 s): the app now calls a machine offline after 15 s of silence, so a dead terminal shows within seconds and a filming one never flickers.
