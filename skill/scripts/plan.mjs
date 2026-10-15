@@ -108,6 +108,26 @@ const screenshot = (url) => {
     { type: "image", source: { type: "base64", media_type: "image/jpeg", data: fs.readFileSync(file).toString("base64") } },
   ];
 };
+let explored = 0;
+const explore = (from, lookingFor, depth) => {
+  if (!/^https?:\/\//.test(String(from))) return [{ type: "text", text: "from (a url) required" }];
+  const words = Array.isArray(lookingFor) ? lookingFor.join(",") : String(lookingFor || "");
+  if (!words.trim()) return [{ type: "text", text: "looking_for required" }];
+  if (++explored > 3) return [{ type: "text", text: "No more exploring for this storyboard; write it from what you saw." }];
+  const exDir = path.join(dir, `explore-${explored}`);
+  fs.mkdirSync(exDir, { recursive: true });
+  const child = spawnSync("node", [script("explore.mjs"), from, "--for", words, "--depth", String(Math.min(3, Math.max(1, Number(depth) || 2))), "--out", exDir], { cwd: process.cwd(), encoding: "utf8", env: process.env, maxBuffer: 64 * 1024 * 1024 });
+  const lines = (child.stdout || "").split("\n");
+  for (const l of lines) if (l.startsWith("· ")) say(l.slice(2));
+  const last = lines.filter((l) => l.startsWith("RESULT ")).pop();
+  let res = null; try { res = JSON.parse(last.slice(7)); } catch { /* none */ }
+  if (!res) return [{ type: "text", text: `Exploring failed: ${(child.stderr || "").trim().split("\n").pop() || "no result"}` }];
+  const content = [];
+  const text = res.screens.map((sc, i) => `## Screen ${i + 1}: ${sc.title || sc.url}\n${sc.url}\nreached by: ${sc.how}${sc.dialog ? `\ndialog: ${sc.dialog}` : ""}\nheadings: ${sc.headings.join(" · ") || "(none)"}\ntabs: ${sc.tabs.join(" · ") || "(none)"}\nbuttons: ${sc.buttons.join(" · ") || "(none)"}${sc.fields.length ? `\nfields: ${sc.fields.join(" · ")}` : ""}\nnav: ${sc.nav.slice(0, 25).join(" · ") || "(none)"}`).join("\n\n");
+  content.push({ type: "text", text: `${text || "(no screens)"}${res.error ? `\n\n(stopped early: ${res.error})` : ""}\n\nScreenshots follow for the best matches, in that order.` });
+  for (const sc of res.screens.slice(0, 3)) if (sc.shot && fs.existsSync(sc.shot)) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: fs.readFileSync(sc.shot).toString("base64") } });
+  return content;
+};
 const probe = (sb) => {
   if (!sb || !Array.isArray(sb.steps)) return "storyboard with steps[] required";
   const file = path.join(dir, "probe.json");
@@ -158,7 +178,7 @@ const prune = (messages) => {
       if (b.type !== "tool_result" || !Array.isArray(b.content)) continue;
       for (let k = 0; k < b.content.length; k++) {
         if (b.content[k].type !== "image") continue;
-        if (++seen > 2) b.content[k] = { type: "text", text: "(a screenshot shown earlier)" };
+        if (++seen > 4) b.content[k] = { type: "text", text: "(a screenshot shown earlier)" };
       }
     }
   }
@@ -172,7 +192,7 @@ const firstMessage = () => {
     `## The app's words on the starting screen\n${vocab}`,
     `## Workspace rules (version ${rules.version || 0})\n${rules.lines?.length ? rules.lines.map((l, i) => `${i + 1}. ${l}`).join("\n") : "(none)"}`,
     `## The project's files${codeOn ? " (this machine sits in the app's repository; read_file is on)" : " (no code here)"}\n${listFiles()}`,
-    `Write the storyboard, probe it, fix it, probe again, then submit_storyboard.`,
+    codeOn ? `Write the storyboard, probe it, fix it, probe again, then submit_storyboard.` : `There is no code: explore first (explore from the starting address, looking_for = the brief's nouns), then write the storyboard, probe it, fix it, probe again, then submit_storyboard.`,
   ];
   return parts.join("\n\n");
 };
@@ -206,6 +226,7 @@ const plan = async () => {
         if (u.name === "list_files") out = listFiles();
         else if (u.name === "read_file") out = readFile(input.path);
         else if (u.name === "harvest_words") { console.log(`  harvesting ${(input.urls || []).join(", ")}`); out = harvest(input.urls); }
+        else if (u.name === "explore") out = explore(input.from, input.looking_for, input.depth);
         else if (u.name === "screenshot") { console.log(`  looking at ${input.url}`); out = screenshot(input.url); }
         else if (u.name === "probe") { console.log("  dry run…"); out = probe(input.storyboard); }
         else if (u.name === "submit_storyboard") {
