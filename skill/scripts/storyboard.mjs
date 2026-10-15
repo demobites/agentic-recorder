@@ -23,11 +23,13 @@ if (!mode || !file || !["print", "words", "await"].includes(mode)) {
 }
 const sb = JSON.parse(fs.readFileSync(file, "utf8"));
 const steps = Array.isArray(sb.steps) ? sb.steps : [];
-const FLOOR = { goto: 1.5, settle: 2, click: 2.5, hover: 2, type: 3, scroll: 2, expect: 1 };
-const secondsOf = (s) => {
-  const words = String(s.narration ?? "").trim().split(/\s+/).filter(Boolean).length;
-  return Math.max(typeof s.dwell === "number" ? s.dwell : 0, words / 2.5, FLOOR[s.action] ?? 2);
-};
+// THE CAMERA'S CLOCK (founder 2026-10-15, bite 1228 said 0:36 and ran 0:51): a beat is held until its
+// line would have finished (words / 2.6 s + 0.4 s, record.mjs estimateSpeech) plus half a second of
+// breath; a click or hover adds about a second of cursor flight and dwell; the first narrated settle
+// carries 2.5 s of startup slack; the take closes on a 2.2 s beat. Same numbers as record.mjs.
+import { secondsOf as cameraSeconds, CLOSING_S } from "./clock.mjs";
+let firstNarrated = true;
+const secondsOf = (s) => { const r = cameraSeconds(s, firstNarrated); if (s.narration) firstNarrated = false; return r; };
 const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 // A row per step that says or shows something; silent plumbing (a bare goto,
 // an expect) rides inside the previous row's time.
@@ -39,7 +41,7 @@ for (const s of steps) {
   if (text && !(s.action === "expect" && !s.narration)) rows.push({ at: clock, text: text.replace(/\s+/g, " "), pointed: s.pointed === true, step: s });
   clock += dur;
 }
-const total = clock;
+const total = clock + CLOSING_S;
 const title = (sb.title ?? sb.app ?? "Demo").toString().trim();
 
 if (mode === "words") {

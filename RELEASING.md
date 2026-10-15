@@ -2,6 +2,11 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.16.0 — 2026-10-15
+
+- THE APPROVED STORY (founder, bite 1228: "the storyteller is blabbing… this 52-second video could have been 25 to 30 seconds"). The manifest now carries `narration_approved: true`: the lines the person said Film it to are the demo's lines, verbatim. DemoBites no longer writes a filler into a silence ("Let's open it up and see how it is set up") or a longer line into a longer beat.
+- THE CAMERA'S CLOCK. `scripts/clock.mjs` is the camera's own cost of a step (speech at 2.6 words/s + breath, cursor flight, startup slack, closing beat; the numbers of record.mjs). The storyboard's times and total now come from it, so 0:36 means 0:36; the built-in planner refuses a storyboard the camera would run past 45 s and is told to cut words or steps, never to pad.
+
 ## 1.15.0 — 2026-10-15
 
 - EXPLORE (founder: "a very short exploration if the brief isn't enough… the customer needs nothing but identity"). Without the app's code the planner asks the listener to look around: `scripts/explore.mjs` walks the live app headless on the camera's profile from the start address, following the nav links, tabs and menus whose words match the brief's nouns, two hops deep (ten screens or 75 s at most), and returns every screen's address, title, headings, tabs and controls with screenshots of the best matches; each screen found is a line in the chat. Links, tabs and menu openers only; never a button that submits, creates, deletes or pays. Three explorations per storyboard at most.
