@@ -247,11 +247,39 @@ if (arg === "listen") {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   console.log(`\n  Listening as "${name}" for ${cfg.workspace?.name ?? "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
-  console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${agentBin ? `Claude Code${agentInfo.agent_version ? " " + agentInfo.agent_version : ""} found; demos film on ${JOB_MODEL}.` : "! Claude Code was not found on this machine — install it and sign in, it does the thinking."}`);
-  console.log("  Leave this terminal open; closing it stops the listening.\n");
+  console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${agentBin ? `Claude Code${agentInfo.agent_version ? " " + agentInfo.agent_version : ""} found; demos film on ${JOB_MODEL} unless you pick another model in the app.` : "! Claude Code was not found on this machine — install it and sign in, it does the thinking."}`);
+  // The one thing the person must know, boxed (founder 2026-10-15): this
+  // window is the machine's side of every recording.
+  console.log(`
+  ┌──────────────────────────────────────────────────────────┐
+  │                                                          │
+  │   LEAVE THIS WINDOW OPEN                                 │
+  │                                                          │
+  │   It is your machine's side of every recording:          │
+  │   the camera, the sign-ins, the coding agent run here.   │
+  │   Closing it, or Ctrl-C, stops the listening.            │
+  │                                                          │
+  └──────────────────────────────────────────────────────────┘
+`);
+  // A line that visibly lives (founder: "look at the terminal, it's stuck"):
+  // a heartbeat with a clock while we wait, cleared while a job prints.
+  const startedAt = Date.now();
+  const tty = !!process.stdout.isTTY;
+  let ticker = null;
+  const tick = () => {
+    const s = Math.floor((Date.now() - startedAt) / 1000);
+    const clock = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    const dot = s % 2 ? "●" : "○";
+    process.stdout.write(`\r\x1b[2K  ${dot} Listening · ${clock} · waiting for a demo from the app`);
+  };
+  const waitOn = () => { if (tty && !ticker) { tick(); ticker = setInterval(tick, 1000); } };
+  const waitOff = () => { if (ticker) { clearInterval(ticker); ticker = null; process.stdout.write("\r\x1b[2K"); } };
+  waitOn();
 
   const runJob = async (job) => {
-    console.log(`\n  ▶ Job ${job.id}: ${job.brief.slice(0, 100)}${job.brief.length > 100 ? "…" : ""}`);
+    waitOff();
+    const model = typeof job.model === "string" && job.model ? job.model : JOB_MODEL;
+    console.log(`\n  ▶ Job ${job.id}: ${job.brief.slice(0, 100)}${job.brief.length > 100 ? "…" : ""}  (filming on ${model})`);
     if (!agentBin) { await event(job.id, "failed", { message: "Claude Code is not installed on this machine" }); return; }
     await event(job.id, "started", { machine: name });
     const prompt = [
@@ -260,7 +288,7 @@ if (arg === "listen") {
       job.url ? `Address to start from: ${job.url}` : "Address: work it out from this project (the saved config, the codebase).",
       `Show the storyboard before filming: ${job.review_storyboard ? "yes — run storyboard.mjs await and obey its answer" : "no — storyboard.mjs await returns film at once"}.`,
     ].join("\n");
-    const child = (await import("node:child_process")).spawn(agentBin, ["-p", prompt, "--model", JOB_MODEL, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"], {
+    const child = (await import("node:child_process")).spawn(agentBin, ["-p", prompt, "--model", model, "--output-format", "stream-json", "--verbose", "--dangerously-skip-permissions"], {
       cwd: process.cwd(),
       env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" },
       stdio: ["ignore", "pipe", "pipe"],
@@ -289,7 +317,8 @@ if (arg === "listen") {
       if (code === 0) await event(job.id, "note", { text: "The agent finished without a ready signal." });
       await event(job.id, "failed", { message: code === 0 ? "The demo did not come through — try again" : `The agent stopped (exit ${code})` });
     }
-    console.log(`  ■ Job ${job.id} ${st?.status ?? "ended"}.`);
+    console.log(`  ■ Job ${job.id} ${st?.status ?? "ended"}.\n`);
+    waitOn();
   };
 
   for (;;) {
