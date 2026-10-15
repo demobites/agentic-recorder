@@ -347,6 +347,10 @@ const wire = {
   frame: { width: FW, height: FH },
   // BROWSER HEADER (2026-09-16): true by default; DemoBites adds the dark macOS bar on top at ingest. A workspace rule "No browser header" sets it false.
   ...(typeof man.browserHeader === "boolean" ? { browserHeader: man.browserHeader } : {}),
+  // APPROVED STORY (founder 2026-10-15, bite 1228: "the storyteller is blabbing"): the lines came from the
+  // director and the person said Film it to THESE lines. DemoBites keeps them verbatim and never writes
+  // a filler into a silence or a longer line into a longer beat.
+  narration_approved: true,
   duration,
   steps,
   camera,

@@ -18,6 +18,7 @@
 // reads is logged on the take (<takeDir>/code-shared.log) so the person can
 // see exactly what left the machine.
 import fs from "node:fs";
+import { estimateTake } from "./clock.mjs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -150,6 +151,10 @@ const validate = (sb) => {
     if (s.frame !== undefined && s.frame !== "close" && s.frame !== "wide") return `${at}: frame must be close or wide`;
   }
   if (sb.steps.length > 14) return "more than 14 steps; 6 to 10 is the law";
+  // THE CAMERA'S CLOCK (founder 2026-10-15): the take may not run past 45 s. The estimate is the
+  // camera's own (clock.mjs); the model gets the number and the cure.
+  const est = estimateTake(sb.steps);
+  if (est > 45) return `the camera would run this take about ${Math.round(est)} s; the law is 30 to 45. Cut words (6 to 11 a line) or steps (5 to 8 narrated); never pad, never add.`;
   return null;
 };
 
