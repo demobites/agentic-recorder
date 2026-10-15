@@ -2,6 +2,13 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.11.0 — 2026-10-15
+
+- The listener looks alive: a heartbeat line with a clock while it waits ("● Listening · 0:42 · waiting for a demo from the app"), cleared while a job prints — the founder read the quiet prompt as "stuck".
+- "LEAVE THIS WINDOW OPEN" boxed after the banner: this window is the machine's side of every recording.
+- The model that films comes with the job (`job.model`, the person's pick on the rail); `DEMOBITES_JOB_MODEL` / `sonnet` only when the job carries none.
+- The app's listen line is now `npx -y demobite@latest …`: npm's "Ok to proceed?" no longer stops the person who already said yes by pasting it.
+
 ## 1.10.1 — 2026-10-15
 
 - Check-in carries the agent's version and the person's own model/effort settings (`agent_version`, `model`, `effort`) and the model demos film on (`job_model`); the listener passes `--model` per job (default `sonnet`, `DEMOBITES_JOB_MODEL` to change) — the filming model is DemoBites' call, shown on the rail.
