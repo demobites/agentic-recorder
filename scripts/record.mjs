@@ -367,6 +367,27 @@ const pushMouse = (type, x, y, button = null, extra = null) => {
 // has nothing to sit on between moves.
 const sampler = setInterval(() => pushMouse("move", cx, cy), CURSOR_SAMPLE_MS);
 
+// THE LIVE FRAME (founder 2026-10-16, "a thumbnail of what we're recording"): a small still of what the
+// camera sees, posted at every step and every few seconds, so the Recordings row in the app shows the
+// take as it happens. Never on the take's path: a frame that fails is dropped, never waited on. One CDP
+// capture at ~480 px wide, JPEG, well under 40 KB; the server keeps only the latest and drops it when
+// the take ends.
+const FRAME_EVERY_MS = 5000;
+let frameCdp = null;
+let framing = false;
+let frameStep = { n: 0, N: 0 };
+const postFrame = async () => {
+  if (framing || !frameStep.N) return;
+  framing = true;
+  try {
+    frameCdp ??= await ctx.newCDPSession(page);
+    const scale = Math.min(1, 480 / VIEW.width);
+    const { data } = await frameCdp.send("Page.captureScreenshot", { format: "jpeg", quality: 55, clip: { x: 0, y: 0, width: VIEW.width, height: VIEW.height, scale } });
+    await postEvent("frame", { ...frameStep, jpeg: data });
+  } catch { /* dropped */ } finally { framing = false; }
+};
+const framer = setInterval(() => void postFrame(), FRAME_EVERY_MS);
+
 /** Ask the element what cursor it shows. Takes the locator visibleBox already
  *  resolved — re-scanning cost ~1s of dead video per step, which inflated a
  *  29s take to 36s purely from instrumentation. Playwright locators pierce
@@ -779,7 +800,7 @@ try {
     process.stdout.write(`step ${rec.n} ${step.action} ${step.label ?? ""}\n`);
     // The customer's line (founder 2026-10-14): one bar, step n of N. The
     // agent relays this, never the step/action lines above.
-    { const N = STORYBOARD.steps.length, filled = Math.round((rec.n / N) * 20); process.stdout.write(`Filming  ${"█".repeat(filled)}${"░".repeat(20 - filled)}  step ${rec.n} of ${N}\n`); void postEvent("filming", { n: rec.n, N }); }
+    { const N = STORYBOARD.steps.length, filled = Math.round((rec.n / N) * 20); process.stdout.write(`Filming  ${"█".repeat(filled)}${"░".repeat(20 - filled)}  step ${rec.n} of ${N}\n`); void postEvent("filming", { n: rec.n, N }); frameStep = { n: rec.n, N }; void postFrame(); }
     if (step.action === "goto") {
       const navIssuedAt = t();
       // domcontentloaded, not load: a heavy site behind a proxy (the cloud
@@ -1210,6 +1231,7 @@ try {
 }
 
 clearInterval(sampler);
+clearInterval(framer);
 manifest.duration = t();
 void postEvent("finishing", { text: "Camera off. Saving the take…" });
 const video = page.video();
