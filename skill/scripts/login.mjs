@@ -161,7 +161,7 @@ while (Date.now() < deadline) {
         : data.workspace;
     const canManage = cfg.scopes.includes("manage");
     console.log(`Approved. Recorder key saved to .recorder/config.json (workspace: ${wsName}).`);
-    console.log(canManage
+    if (!connectCode) console.log(canManage
       ? "This key can also MANAGE your centers — wire your agent with: npx demobite mcp"
       : "This key records only. Managing by agent (MCP) comes with the Grow plan.");
     process.exit(0);

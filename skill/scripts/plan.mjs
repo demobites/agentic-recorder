@@ -218,7 +218,7 @@ const plan = async () => {
     const res = await relay(messages);
     const content = Array.isArray(res.content) ? res.content : [];
     messages.push({ role: "assistant", content });
-    for (const b of content) if (b.type === "text" && b.text?.trim()) console.log(`  ${b.text.trim().split("\n")[0].slice(0, 140)}`);
+    for (const b of content) if (b.type === "text" && b.text?.trim()) say(b.text.trim().split("\n")[0].replace(/^[#*\-\s]+/, "").slice(0, 140));
     const uses = content.filter((b) => b.type === "tool_use");
     if (!uses.length) {
       if (storyboard) return;
@@ -232,13 +232,15 @@ const plan = async () => {
       const input = u.input || {};
       let out;
       try {
-        if (u.name === "list_files") out = listFiles();
-        else if (u.name === "read_file") out = readFile(input.path);
-        else if (u.name === "harvest_words") { console.log(`  harvesting ${(input.urls || []).join(", ")}`); out = harvest(input.urls); }
-        else if (u.name === "explore") out = explore(input.from, input.looking_for, input.depth);
-        else if (u.name === "screenshot") { console.log(`  looking at ${input.url}`); out = screenshot(input.url); }
-        else if (u.name === "probe") { console.log("  dry run…"); out = probe(input.storyboard); }
+        const where = (u) => { try { const x = new URL(u); return (x.pathname === "/" ? x.host : x.pathname).slice(0, 60); } catch { return String(u || "").slice(0, 60); } };
+        if (u.name === "list_files") { say("Listing the project's files…"); out = listFiles(); }
+        else if (u.name === "read_file") { say(`Reading ${String(input.path || "").slice(0, 80)}…`); out = readFile(input.path); }
+        else if (u.name === "harvest_words") { say(`Reading the app's own words on ${(input.urls || []).length} page${(input.urls || []).length === 1 ? "" : "s"}…`); out = harvest(input.urls); }
+        else if (u.name === "explore") { say(`Walking the app from ${where(input.from)}, looking for ${String(input.looking_for || "the brief's words").slice(0, 60)}…`); out = explore(input.from, input.looking_for, input.depth); }
+        else if (u.name === "screenshot") { say(`Looking at ${where(input.url)}…`); out = screenshot(input.url); }
+        else if (u.name === "probe") { say(`Dry run of the storyboard, ${(input.storyboard?.steps || []).length} steps…`); out = probe(input.storyboard); }
         else if (u.name === "submit_storyboard") {
+          say("Handing in the storyboard…");
           const bad = validate(input.storyboard);
           if (bad) out = `Not accepted: ${bad}`;
           else { storyboard = input.storyboard; creates = typeof input.creates === "string" ? input.creates : ""; out = "Accepted."; }
