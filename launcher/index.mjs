@@ -89,7 +89,7 @@ const printStatus = () => {
   const cfgThere = lock?.cwd ? readJson(path.join(lock.cwd, ".recorder", "config.json")) : null;
   const st = { base: cfgThere?.base ?? null, workspace: cfgThere?.workspace?.name ?? null, ...(readJson(STATE) ?? {}) };
   if (live) {
-    console.log(`  ● Listening as "${st?.name ?? os.hostname()}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${(st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com"}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"})`);
+    console.log(`  ● Listening as "${st?.name ?? os.hostname().replace(/\.local$/, "")}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${(st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com"}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"})`);
     if (st?.at) console.log(`    last check-in ${ago(st.at)} · ${st.busy ? `recording: ${st.job ?? ""}` : "idle"}${st.last_error ? ` · last error: ${st.last_error}` : ""}`);
     console.log(`    working in ${lock.cwd.replace(os.homedir(), "~")}${lock.repo ? ` · code: ${lock.repo}` : ""}`);
   } else {
@@ -272,7 +272,7 @@ if (arg === "on") {
   const base = (flag("--base") || cfgAt()?.base || "https://app.demobites.com").replace(/\/+$/, "");
   const code = flag("--connect");
   if (code || !cfgAt()?.api_key || (flag("--base") && cfgAt()?.base && cfgAt().base.replace(/\/+$/, "") !== base)) {
-    console.log("\n  Connecting this machine to your DemoBites account…\n");
+    console.log("");
     const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs"), base, ...(code ? ["--connect", code] : [])], { stdio: "inherit", cwd });
     if (r.status !== 0) process.exit(r.status ?? 1);
   }
@@ -336,9 +336,25 @@ if (arg === "on") {
   // a moment for the first check-in, then the truth
   const until = Date.now() + 8000;
   while (Date.now() < until) { const l = readJson(LOCK); if (l?.pid && pidAlive(l.pid) && l.service) break; spawnSync(process.execPath, ["-e", "setTimeout(()=>{},400)"]); }
-  console.log("");
-  printStatus();
-  console.log("\n  It starts with the machine from now on. No window to keep open.\n");
+  // The closing box (founder 2026-10-16: "something not frightening"): done, close this, it runs by itself.
+  console.log(`
+  ┌──────────────────────────────────────────────────────────┐
+  │                                                          │
+  │   ✓  Done. DemoBites is listening on this ${process.platform === "darwin" ? "Mac" : "machine"}.${process.platform === "darwin" ? "          " : "      "}│
+  │                                                          │
+  │   You can close this window. The recorder keeps          │
+  │   running quietly in the background, and starts          │
+  │   again with your ${process.platform === "darwin" ? "Mac" : "machine"}. Nothing to keep open.${process.platform === "darwin" ? "             " : "         "}│
+  │                                                          │
+  │   Back in the app, the Recorder box says Connected.      │
+  │                                                          │
+  │   Any time, in a Terminal:                               │
+  │     demobite status    is it listening                   │
+  │     demobite off       stop it and remove it             │
+  │     demobite on        bring it back                     │
+  │                                                          │
+  └──────────────────────────────────────────────────────────┘
+`);
   process.exit(0);
 }
 
