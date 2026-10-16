@@ -323,7 +323,15 @@ if (arg === "on") {
     spawnSync("launchctl", ["bootout", `gui/${process.getuid()}/${SERVICE_LABEL}`], { stdio: "ignore" });
     killListener();
     fs.writeFileSync(def.file, plist);
-    const r = spawnSync("launchctl", ["bootstrap", `gui/${process.getuid()}`, def.file], { encoding: "utf8" });
+    // launchd can refuse a bootstrap in the second after a bootout of the same label (I/O error while the
+    // old job is torn down; seen 2026-10-16 right after an update): a few tries, a second apart.
+    let r = null;
+    for (let i = 0; i < 5; i++) {
+      r = spawnSync("launchctl", ["bootstrap", `gui/${process.getuid()}`, def.file], { encoding: "utf8" });
+      if (r.status === 0) break;
+      spawnSync("launchctl", ["bootout", `gui/${process.getuid()}/${SERVICE_LABEL}`], { stdio: "ignore" });
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+    }
     if (r.status !== 0) { warn(`launchctl refused the service: ${(r.stderr || r.stdout || "").trim()}`); process.exit(1); }
   } else if (process.platform === "linux") {
     const unit = `[Unit]\nDescription=DemoBites listener\nAfter=network-online.target\n\n[Service]\nExecStart=${args.map((a) => JSON.stringify(a)).join(" ")}\nWorkingDirectory=${cwd}\nEnvironment=PATH=${pathEnv}\n${process.env.DEMOBITE_HOME ? `Environment=DEMOBITE_HOME=${HOME}\n` : ""}Restart=always\nRestartSec=10\nStandardOutput=append:${LOG}\nStandardError=append:${LOG}\n\n[Install]\nWantedBy=default.target\n`;
