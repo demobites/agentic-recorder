@@ -121,6 +121,41 @@ const removeService = () => {
   else if (process.platform === "linux") spawnSync("systemctl", ["--user", "disable", "--now", SERVICE_UNIT], { stdio: "ignore" });
   else spawnSync("reg", ["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", RUN_NAME, "/f"], { stdio: "ignore" });
 };
+// ── demobite repo <site> [--forget] (1.22.0, founder 2026-10-16) ──────────────────────────────
+// Run in the folder where the app's repository is: that folder becomes the code of that SITE on this
+// machine. The planner reads from it when a demo records there (up to 10 files a take, each logged).
+// The binding lives with the machine (~/.demobite/home/.recorder/repos.json, or the Terminal listener's
+// own .recorder), and the app shows it on the bar as the Code mark.
+const SLD = new Set(["co", "com", "net", "org", "gov", "edu", "ac"]);
+const siteOf = (hostname) => { const h = String(hostname).toLowerCase().replace(/:\d+$/, ""); if (/^[\d.]+$/.test(h) || h === "localhost" || !h.includes(".")) return h; const l = h.split("."); return l.length >= 3 && SLD.has(l[l.length - 2]) && l[l.length - 1].length === 2 ? l.slice(-3).join(".") : l.slice(-2).join("."); };
+const reposFile = (cwd) => path.join(cwd, ".recorder", "repos.json");
+if (arg === "repo") {
+  const raw = process.argv.slice(3).find((a) => !a.startsWith("--")) || "";
+  const forget = process.argv.includes("--forget");
+  let site = "";
+  try { site = siteOf(new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`).hostname); } catch { /* below */ }
+  if (!site) { console.error("  Usage: demobite repo <site> [--forget]   (run it in the folder where the app's repository is)\n  e.g.   demobite repo app.acme.com"); process.exit(2); }
+  const lock = readJson(LOCK);
+  const home = lock?.cwd && fs.existsSync(path.join(lock.cwd, ".recorder")) ? lock.cwd : SERVICE_CWD;
+  const file = reposFile(home);
+  const repos = readJson(file) ?? {};
+  if (forget) {
+    if (!repos[site]) { console.log(`  Nothing bound to ${site} on this machine.`); process.exit(0); }
+    delete repos[site]; writeJson(file, repos);
+    console.log(`  ○ ${site} no longer has code on this machine. The planner works from the live app there.`);
+    process.exit(0);
+  }
+  const folder = process.cwd();
+  if (spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { encoding: "utf8", cwd: folder }).status !== 0) { console.error(`  This folder is not a git repository: ${folder}\n  Open a Terminal in the folder where the app's repository is, then run it again.`); process.exit(1); }
+  const top = spawnSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", cwd: folder }).stdout.trim() || folder;
+  const remote = spawnSync("git", ["config", "--get", "remote.origin.url"], { encoding: "utf8", cwd: top }).stdout.trim();
+  const m = remote.match(/[:/]([^/:]+\/[^/]+?)(?:\.git)?$/);
+  const repo = m ? m[1] : path.basename(top);
+  repos[site] = { folder: top, repo, at: new Date().toISOString() };
+  writeJson(file, repos);
+  console.log(`  ✓ The code of ${site} on this machine: ${top.replace(os.homedir(), "~")} (${repo}).\n    The planner reads it when a demo records there: up to 10 files a take, each one listed in the take.\n    Lines it needs pass through DemoBites to the model and are not stored. Undo: demobite repo ${site} --forget`);
+  process.exit(0);
+}
 if (arg === "off") {
   removeService();
   const pid = killListener();
@@ -476,8 +511,11 @@ if (arg === "listen") {
   const readiness = () => {
     let signins = [];
     try { signins = Object.keys(JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "signins.json"), "utf8")).origins || {}); } catch { /* none */ }
-    return { ...agentInfo, chrome: haveChrome, recorder: pkg.version, signins, cwd: process.cwd(), platform: process.platform, repo };
+    const repos = Object.entries(readJson(reposFile(process.cwd())) ?? {}).filter(([, v]) => v && typeof v.folder === "string" && fs.existsSync(v.folder)).map(([site, v]) => ({ site, folder: v.folder, repo: v.repo ?? null }));
+    return { ...agentInfo, chrome: haveChrome, recorder: pkg.version, signins, cwd: process.cwd(), platform: process.platform, repo, repos };
   };
+  // The code bound to a job's site (1.22.0): the planner reads there.
+  const codeFor = (url) => { try { const site = siteOf(new URL(url).hostname); const b = (readJson(reposFile(process.cwd())) ?? {})[site]; return b && fs.existsSync(b.folder) ? { site, ...b } : null; } catch { return null; } };
   const api = async (body) => {
     try {
       const res = await fetch(`${base}/api/recorder/listen`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.api_key}` }, body: JSON.stringify(body) });
@@ -649,7 +687,9 @@ if (arg === "listen") {
       fs.writeFileSync(path.join(takeDir, "job.json"), JSON.stringify({ id: job.id, brief: job.brief, url: job.url ?? null, model, review_storyboard: job.review_storyboard !== false, ...(job.retake_of ? { retake_of: job.retake_of, retake_note: job.retake_note ?? null, storyboard: job.storyboard ?? null } : {}) }, null, 2) + "\n");
       // Spawned async (1.14.1): a spawnSync here blocked the event loop, so the 5 s heartbeat never fired
       // during a take and the rail called the machine offline mid-recording (founder 2026-10-15 17:39).
-      const child = (await import("node:child_process")).spawn(process.execPath, [path.join(dest, "scripts", "plan.mjs"), takeDir], { cwd: process.cwd(), stdio: "inherit", env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" }, detached: process.platform !== "win32" });
+      const bound = job.url ? codeFor(job.url) : null;
+      if (bound) console.log(`  Code: ${bound.repo ?? bound.site} (${bound.folder.replace(os.homedir(), "~")})`);
+      const child = (await import("node:child_process")).spawn(process.execPath, [path.join(dest, "scripts", "plan.mjs"), takeDir], { cwd: process.cwd(), stdio: "inherit", env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1", ...(bound ? { DEMOBITES_CODE_DIR: bound.folder } : {}) }, detached: process.platform !== "win32" });
       track(child);
       const code = await new Promise((resolve) => child.on("close", resolve));
       const st = await api({ action: "poll", job_id: job.id });

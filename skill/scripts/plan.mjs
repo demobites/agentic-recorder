@@ -60,12 +60,15 @@ say("Reading the workspace rules…");
 run("rules.mjs", [dir]);
 const rules = (() => { try { return JSON.parse(fs.readFileSync(path.resolve(".recorder", "rules.json"), "utf8")); } catch { return { version: 0, lines: [] }; } })();
 
-const codeOn = !process.env.DEMOBITES_NO_CODE && spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { encoding: "utf8" }).status === 0;
+// THE CODE FOLDER (1.22.0, founder 2026-10-16): the folder bound to this site with `demobite repo <site>`
+// (the listener passes it as DEMOBITES_CODE_DIR), else the folder the listener runs in.
+const CODE_DIR = process.env.DEMOBITES_CODE_DIR ? path.resolve(process.env.DEMOBITES_CODE_DIR) : process.cwd();
+const codeOn = !process.env.DEMOBITES_NO_CODE && spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { encoding: "utf8", cwd: CODE_DIR }).status === 0;
 const SECRET_RE = /(^|\/)(\.env(\..*)?|.*\.(pem|key|p12|pfx|crt)|.*secret.*|.*credential.*|\.recorder\/.*|node_modules\/.*|\.git\/.*|.*\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/i;
 const UI_RE = /(^|\/)(app|pages|routes|src|components|views|screens|navigation|nav|layouts?|lib\/(nav|routes|menu))(\/|$)|(^|\/)(route|router|routes|nav|navigation|sidebar|menu|layout|page)\.[jt]sx?$|\/page\.[jt]sx?$|\/layout\.[jt]sx?$|\/route\.[jt]s$/i;
 const listFiles = () => {
   if (!codeOn) return "(no repository here, or code sharing is off)";
-  const r = spawnSync("git", ["ls-files"], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  const r = spawnSync("git", ["ls-files"], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, cwd: CODE_DIR });
   if (r.status !== 0) return "(no repository here)";
   const all = r.stdout.split("\n").filter(Boolean).filter((f) => !SECRET_RE.test(f) && /\.(tsx?|jsx?|vue|svelte|html|mdx?)$/i.test(f));
   const ui = all.filter((f) => UI_RE.test(f));
@@ -77,9 +80,9 @@ const shared = [];
 const readFile = (rel) => {
   if (!codeOn) return "Code sharing is off on this machine.";
   if (typeof rel !== "string" || !rel.trim()) return "path required";
-  const abs = path.resolve(process.cwd(), rel);
-  if (!abs.startsWith(process.cwd() + path.sep)) return "Outside the project.";
-  const r = path.relative(process.cwd(), abs);
+  const abs = path.resolve(CODE_DIR, rel);
+  if (!abs.startsWith(CODE_DIR + path.sep)) return "Outside the project.";
+  const r = path.relative(CODE_DIR, abs);
   if (SECRET_RE.test(r)) return "Not that file.";
   if (reads >= 10) return "No more reads for this storyboard.";
   let text;
