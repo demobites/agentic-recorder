@@ -480,6 +480,8 @@ if (arg === "listen") {
     console.log(`\n  ${isLook ? "◉ Looking at" : "⚿ Sign-in at"} ${job.url}`);
     noteState({ busy: true, job: job.id });
     await event(job.id, "started", { machine: name });
+    // Alive while the person signs in (a window can wait minutes): the heartbeat, or the rail calls this machine offline.
+    const heartbeat = setInterval(() => { void api({ action: "checkin", machine_id: listen.machine_id, name, readiness: readiness(), busy: true }); }, 5000);
     const { spawn } = await import("node:child_process");
     const child = spawn(process.execPath, [script, job.url], { cwd: process.cwd(), env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     track(child);
@@ -498,6 +500,7 @@ if (arg === "listen") {
     });
     child.stderr.on("data", (d) => { const t = d.toString().trim(); if (t) console.log(`  ! ${t.split("\n")[0].slice(0, 160)}`); });
     const code = await new Promise((r) => child.on("close", r));
+    clearInterval(heartbeat);
     if (isLook) {
       if (verdict) await event(job.id, "looked", verdict);
       else await event(job.id, "failed", { message: "The look did not finish" });

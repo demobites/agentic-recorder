@@ -27,7 +27,7 @@ const profileDir = process.env.RECORDER_PROFILE || path.resolve(process.cwd(), "
 const launchOpts = {
   headless: true,
   viewport: { width: 1440, height: 900 },
-  args: ["--force-color-profile=srgb", "--disable-blink-features=AutomationControlled"],
+  args: ["--force-color-profile=srgb", "--disable-blink-features=AutomationControlled", "--disable-features=MediaRouter,DialMediaRouteProvider", "--disable-component-update", "--no-default-browser-check"],
   ignoreDefaultArgs: ["--enable-automation"],
 };
 let ctx;

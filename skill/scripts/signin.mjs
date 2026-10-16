@@ -49,7 +49,7 @@ const launchOpts = {
   headless: false,
   viewport: { width: 1440, height: 900 },
   deviceScaleFactor: 1,
-  args: ["--force-color-profile=srgb", "--disable-blink-features=AutomationControlled"],
+  args: ["--force-color-profile=srgb", "--disable-blink-features=AutomationControlled", "--disable-features=MediaRouter,DialMediaRouteProvider", "--disable-component-update", "--no-default-browser-check"],
   ignoreDefaultArgs: ["--enable-automation"],
 };
 let ctx;

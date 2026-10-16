@@ -29,7 +29,7 @@ const DANGER = /\b(delete|remove|pay|purchase|buy|subscribe|upgrade|publish|send
 
 const { chromium } = await import("playwright");
 const profileDir = process.env.RECORDER_PROFILE || path.resolve(process.cwd(), ".recorder", "profile");
-const launchOpts = { headless: true, viewport: { width: 1440, height: 900 }, args: ["--force-color-profile=srgb", "--disable-blink-features=AutomationControlled"], ignoreDefaultArgs: ["--enable-automation"] };
+const launchOpts = { headless: true, viewport: { width: 1440, height: 900 }, args: ["--force-color-profile=srgb", "--disable-blink-features=AutomationControlled", "--disable-features=MediaRouter,DialMediaRouteProvider", "--disable-component-update", "--no-default-browser-check"], ignoreDefaultArgs: ["--enable-automation"] };
 let ctx;
 try { ctx = await chromium.launchPersistentContext(profileDir, { ...launchOpts, channel: "chrome" }); }
 catch { ctx = await chromium.launchPersistentContext(profileDir, launchOpts); }
