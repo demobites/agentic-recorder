@@ -207,7 +207,7 @@ const launchOpts = {
   viewport: VIEW,
   recordVideo: { dir: DIR, size: VIEW },
   deviceScaleFactor: 1,
-  args: ["--force-color-profile=srgb", "--disable-blink-features=AutomationControlled"],
+  args: ["--force-color-profile=srgb", "--disable-blink-features=AutomationControlled", "--disable-features=MediaRouter,DialMediaRouteProvider", "--disable-component-update", "--no-default-browser-check"],
 };
 
 // THREE ways to get a browser. ONE script serves both lanes — the cloud
