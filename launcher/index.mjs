@@ -24,7 +24,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -66,6 +66,8 @@ const CHILDREN = path.join(HOME, "children.json");
 // never unload the real one (2026-10-16: a scratch rig's `off` removed the founder's service).
 const HOME_TAG = process.env.DEMOBITE_HOME ? "." + createHash("sha1").update(HOME).digest("hex").slice(0, 8) : "";
 const SERVICE_LABEL = `com.demobites.listen${HOME_TAG}`;
+const PKG_DIR = path.join(HOME, "pkg");          // the copy the service runs
+const UPDATE = path.join(HOME, "update.json");   // { from, to, at, boots } while an update settles
 const SERVICE_UNIT = `demobite${HOME_TAG}.service`;
 const RUN_NAME = `DemoBites${HOME_TAG}`;
 const SERVICE = process.argv.includes("--service");
@@ -95,7 +97,7 @@ const printStatus = () => {
   const cfgThere = lock?.cwd ? readJson(path.join(lock.cwd, ".recorder", "config.json")) : null;
   const st = { base: cfgThere?.base ?? null, workspace: cfgThere?.workspace?.name ?? null, ...(readJson(STATE) ?? {}) };
   if (live) {
-    console.log(`  ● Connected as "${st?.name ?? os.hostname().replace(/\.local$/, "")}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${(st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com"}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"})`);
+    console.log(`  ● Connected as "${st?.name ?? os.hostname().replace(/\.local$/, "")}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${(st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com"}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"}) · v${readJson(UPDATE)?.to ?? pkg.version}`);
     if (st?.at) console.log(`    last check-in ${ago(st.at)} · ${st.busy ? `recording: ${st.job ?? ""}` : "idle"}${st.last_error ? ` · last error: ${st.last_error}` : ""}`);
     console.log(`    working in ${lock.cwd.replace(os.homedir(), "~")}${lock.repo ? ` · code: ${lock.repo}` : ""}`);
   } else {
@@ -104,6 +106,7 @@ const printStatus = () => {
   console.log(`    login service: ${serviceInstalled() ? "installed (starts at login, restarts if it dies)" : "not installed"} · run: demobite ${live ? "off" : "on"}`);
   console.log(`    log: ${LOG.replace(os.homedir(), "~")}`);
 };
+if (arg === "--version" || arg === "-v" || arg === "version") { console.log(pkg.version); process.exit(0); }
 if (arg === "status" && !process.argv[3]) { printStatus(); process.exit(0); }
 if (arg === "logs") {
   const n = Number(process.argv[3] || 40);
@@ -463,6 +466,59 @@ if (arg === "listen") {
   const event = (job_id, kind, payload) => api({ action: "event", job_id, kind, payload });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+  // ── SELF-UPDATE (1.19.0, founder 2026-10-16: "checks if there's an update and updates itself") ──
+  // The service copy under ~/.demobite/pkg asks the registry once an hour (and at start) for the latest
+  // version. Newer, and idle: it installs that version into pkg.next with the private Node's npm, checks
+  // the new launcher answers `--version`, swaps the folders (the old copy stays in pkg.prev), and exits;
+  // the login service brings it back on the new code. A new copy that fails to check in three boots in
+  // a row is swapped back. Never during a job; a machine asleep for a week updates within the hour it wakes.
+  const selfUpdating = SERVICE && launcherPath.startsWith(PKG_DIR + path.sep);
+  const newer = (a, b) => { const A = a.split(".").map(Number), B = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((A[i] || 0) !== (B[i] || 0)) return (A[i] || 0) > (B[i] || 0); } return false; };
+  const run = (cmd, args) => new Promise((resolve) => { const c = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] }); let out = ""; c.stdout.on("data", (d) => { out += d; }); c.stderr.on("data", (d) => { out += d; }); c.on("close", (code) => resolve({ code, out })); c.on("error", (e) => resolve({ code: -1, out: String(e) })); });
+  let updateCheckedAt = 0;
+  const selfUpdate = async () => {
+    if (!selfUpdating) return;
+    updateCheckedAt = Date.now();
+    let latest = null;
+    try { const r = await fetch(`https://registry.npmjs.org/${pkg.name}/latest`, { signal: AbortSignal.timeout(8000) }); if (r.ok) latest = (await r.json()).version; } catch { /* offline: next hour */ }
+    if (!latest || !newer(latest, pkg.version)) return;
+    const stamp = () => new Date().toISOString();
+    console.log(`  ${stamp()} update: ${pkg.version} → ${latest}, installing…`);
+    const stage = PKG_DIR + ".next", prev = PKG_DIR + ".prev";
+    fs.rmSync(stage, { recursive: true, force: true });
+    // check-ins keep flowing while npm works, so the app never calls this machine quiet
+    const beat = setInterval(() => { void api({ action: "checkin", machine_id: listen.machine_id, name, readiness: readiness() }); }, 5000);
+    const [cmd, args] = npmCmd(["install", "--prefix", stage, "--silent", "--no-audit", "--no-fund", `${pkg.name}@${latest}`]);
+    const r = await run(cmd, args);
+    clearInterval(beat);
+    if (r.code !== 0) { console.log(`  ${stamp()} update: npm failed (${r.out.trim().split("\n").pop() || r.code}); staying on ${pkg.version}`); fs.rmSync(stage, { recursive: true, force: true }); return; }
+    const check = spawnSync(process.execPath, [path.join(stage, "node_modules", pkg.name, "launcher", "index.mjs"), "--version"], { encoding: "utf8", timeout: 20000 });
+    if (check.status !== 0 || check.stdout.trim() !== latest) { console.log(`  ${stamp()} update: the new launcher did not answer; staying on ${pkg.version}`); fs.rmSync(stage, { recursive: true, force: true }); return; }
+    fs.rmSync(prev, { recursive: true, force: true });
+    fs.renameSync(PKG_DIR, prev);
+    fs.renameSync(stage, PKG_DIR);
+    writeJson(UPDATE, { from: pkg.version, to: latest, at: stamp(), boots: 0 });
+    console.log(`  ${stamp()} update: ${latest} installed; restarting`);
+    if (process.platform === "win32") { const d = spawn("wscript.exe", [serviceDef().file], { detached: true, stdio: "ignore" }); d.unref(); }
+    bye("UPDATE");
+  };
+  // Three boots without a check-in on a fresh update: back to the copy that worked.
+  if (selfUpdating) {
+    const u = readJson(UPDATE);
+    if (u?.to === pkg.version) {
+      if ((u.boots ?? 0) >= 3 && fs.existsSync(PKG_DIR + ".prev")) {
+        console.log(`  ${new Date().toISOString()} update: ${pkg.version} never checked in; back to ${u.from}`);
+        fs.rmSync(PKG_DIR + ".bad", { recursive: true, force: true });
+        fs.renameSync(PKG_DIR, PKG_DIR + ".bad"); fs.renameSync(PKG_DIR + ".prev", PKG_DIR);
+        fs.rmSync(UPDATE, { force: true });
+        if (process.platform === "win32") { const d = spawn("wscript.exe", [serviceDef().file], { detached: true, stdio: "ignore" }); d.unref(); }
+        bye("UPDATE");
+      }
+      writeJson(UPDATE, { ...u, boots: (u.boots ?? 0) + 1 });
+    }
+  }
+  const settled = () => { if (!selfUpdating) return; if (fs.existsSync(UPDATE)) { fs.rmSync(UPDATE, { force: true }); fs.rmSync(PKG_DIR + ".prev", { recursive: true, force: true }); console.log(`  ${new Date().toISOString()} update: ${pkg.version} is in and checked in`); } };
+
   console.log(`\n  Connected as "${name}" for ${cfg.workspace?.name ?? "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
   console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${engine === "claude" ? (agentBin ? `Claude Code${agentInfo.agent_version ? " " + agentInfo.agent_version : ""} plans the demos, on your own plan; they film on ${JOB_MODEL} unless you pick another model in the app.` : "! --engine=claude, but Claude Code was not found on this machine.") : `Demos are planned by the DemoBites agent on ${JOB_MODEL} (pick another model in the app)${process.env.DEMOBITES_NO_CODE ? "; code sharing is off" : repo ? "; the files it reads from this project are logged in each take" : ""}.`}`);
   // The one thing the person must know, boxed (founder 2026-10-15): this
@@ -603,7 +659,9 @@ if (arg === "listen") {
 
   for (;;) {
     const r = await api({ action: "checkin", machine_id: listen.machine_id, name, readiness: readiness() });
+    if (r) settled();
     if (r?.job) await runJob(r.job);
+    else if (r && Date.now() - updateCheckedAt > 60 * 60 * 1000) await selfUpdate();
     else await sleep(5000);
   }
 }
