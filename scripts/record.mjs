@@ -376,15 +376,21 @@ const FRAME_EVERY_MS = 5000;
 let frameCdp = null;
 let framing = false;
 let frameStep = { n: 0, N: 0 };
+let frameWarned = false;
 const postFrame = async () => {
   if (framing || !frameStep.N) return;
   framing = true;
+  // A capture can stall while the page navigates (the first take of 2026-10-16 posted nothing: one hung
+  // capture held the flag for the whole take). Four seconds, then the frame is dropped and the next one tries.
+  const within = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`timeout ${ms} ms`)), ms))]);
   try {
-    frameCdp ??= await ctx.newCDPSession(page);
+    frameCdp ??= await within(ctx.newCDPSession(page), 4000);
     const scale = Math.min(1, 480 / VIEW.width);
-    const { data } = await frameCdp.send("Page.captureScreenshot", { format: "jpeg", quality: 55, clip: { x: 0, y: 0, width: VIEW.width, height: VIEW.height, scale } });
-    await postEvent("frame", { ...frameStep, jpeg: data });
-  } catch { /* dropped */ } finally { framing = false; }
+    const { data } = await within(frameCdp.send("Page.captureScreenshot", { format: "jpeg", quality: 55, clip: { x: 0, y: 0, width: VIEW.width, height: VIEW.height, scale } }), 4000);
+    await within(postEvent("frame", { ...frameStep, jpeg: data }), 8000);
+  } catch (e) {
+    if (!frameWarned) { frameWarned = true; console.error(`frame: dropped (${String(e?.message ?? e).split("\n")[0]})`); }
+  } finally { framing = false; }
 };
 const framer = setInterval(() => void postFrame(), FRAME_EVERY_MS);
 

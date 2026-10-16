@@ -36,7 +36,8 @@ const warn = (m) => console.log(`  ! ${m}`);
 
 // The skill's home and the project's key. The key lives in <cwd>/.recorder/config.json
 // (login.mjs writes it there), so everything here is per-project.
-const skillsDir = path.join(os.homedir(), ".claude", "skills");
+// A test home (DEMOBITE_HOME) keeps its own skill copy too: two recorders on one Mac must never refresh each other's camera.
+const skillsDir = process.env.DEMOBITE_HOME ? path.join(process.env.DEMOBITE_HOME, "skills") : path.join(os.homedir(), ".claude", "skills");
 const dest = path.join(skillsDir, "agentic-recorder");
 const readCfg = () => {
   try { return JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "config.json"), "utf8")); }
