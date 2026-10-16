@@ -89,11 +89,11 @@ const printStatus = () => {
   const cfgThere = lock?.cwd ? readJson(path.join(lock.cwd, ".recorder", "config.json")) : null;
   const st = { base: cfgThere?.base ?? null, workspace: cfgThere?.workspace?.name ?? null, ...(readJson(STATE) ?? {}) };
   if (live) {
-    console.log(`  ● Listening as "${st?.name ?? os.hostname().replace(/\.local$/, "")}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${(st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com"}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"})`);
+    console.log(`  ● Connected as "${st?.name ?? os.hostname().replace(/\.local$/, "")}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${(st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com"}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"})`);
     if (st?.at) console.log(`    last check-in ${ago(st.at)} · ${st.busy ? `recording: ${st.job ?? ""}` : "idle"}${st.last_error ? ` · last error: ${st.last_error}` : ""}`);
     console.log(`    working in ${lock.cwd.replace(os.homedir(), "~")}${lock.repo ? ` · code: ${lock.repo}` : ""}`);
   } else {
-    console.log(`  ○ Not listening.${st?.at ? ` Last check-in ${ago(st.at)}.` : ""}`);
+    console.log(`  ○ Not connected.${st?.at ? ` Last check-in ${ago(st.at)}.` : ""}`);
   }
   console.log(`    login service: ${serviceInstalled() ? "installed (starts at login, restarts if it dies)" : "not installed"} · run: demobite ${live ? "off" : "on"}`);
   console.log(`    log: ${LOG.replace(os.homedir(), "~")}`);
@@ -340,7 +340,7 @@ if (arg === "on") {
   console.log(`
   ┌──────────────────────────────────────────────────────────┐
   │                                                          │
-  │   ✓  Done. DemoBites is listening on this ${process.platform === "darwin" ? "Mac" : "machine"}.${process.platform === "darwin" ? "          " : "      "}│
+  │   ✓  Done. DemoBites is connected on this ${process.platform === "darwin" ? "Mac" : "machine"}.${process.platform === "darwin" ? "          " : "      "}│
   │                                                          │
   │   You can close this window. The recorder keeps          │
   │   running quietly in the background, and starts          │
@@ -349,7 +349,7 @@ if (arg === "on") {
   │   Back in the app, the Recorder box says Connected.      │
   │                                                          │
   │   Any time, in a Terminal:                               │
-  │     demobite status    is it listening                   │
+  │     demobite status    is it connected                   │
   │     demobite off       stop it and remove it             │
   │     demobite on        bring it back                     │
   │                                                          │
@@ -385,7 +385,7 @@ if (arg === "listen") {
   {
     const cur = readJson(LOCK);
     if (cur?.pid && cur.pid !== process.pid && pidAlive(cur.pid)) {
-      console.log(`  ● Already listening (pid ${cur.pid}, since ${new Date(cur.since).toLocaleTimeString()}${cur.service ? ", the login service" : ""}). Nothing to do.\n    demobite status · demobite off`);
+      console.log(`  ● Already connected (pid ${cur.pid}, since ${new Date(cur.since).toLocaleTimeString()}${cur.service ? ", the login service" : ""}). Nothing to do.\n    demobite status · demobite off`);
       process.exit(0);
     }
     // the browsers of a listener that died hard
@@ -457,11 +457,11 @@ if (arg === "listen") {
   const event = (job_id, kind, payload) => api({ action: "event", job_id, kind, payload });
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  console.log(`\n  Listening as "${name}" for ${cfg.workspace?.name ?? "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
+  console.log(`\n  Connected as "${name}" for ${cfg.workspace?.name ?? "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
   console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${engine === "claude" ? (agentBin ? `Claude Code${agentInfo.agent_version ? " " + agentInfo.agent_version : ""} plans the demos, on your own plan; they film on ${JOB_MODEL} unless you pick another model in the app.` : "! --engine=claude, but Claude Code was not found on this machine.") : `Demos are planned by the DemoBites agent on ${JOB_MODEL} (pick another model in the app)${process.env.DEMOBITES_NO_CODE ? "; code sharing is off" : repo ? "; the files it reads from this project are logged in each take" : ""}.`}`);
   // The one thing the person must know, boxed (founder 2026-10-15): this
   // window is the machine's side of every recording. The login service has no window: one line instead.
-  if (SERVICE) console.log(`  ${new Date().toISOString()} listening (login service, pid ${process.pid})`);
+  if (SERVICE) console.log(`  ${new Date().toISOString()} connected (login service, pid ${process.pid})`);
   else console.log(`
   ┌──────────────────────────────────────────────────────────┐
   │                                                          │
@@ -482,7 +482,7 @@ if (arg === "listen") {
     const s = Math.floor((Date.now() - startedAt) / 1000);
     const clock = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
     const dot = s % 2 ? "●" : "○";
-    process.stdout.write(`\r\x1b[2K  ${dot} Listening · ${clock} · waiting for a demo from the app`);
+    process.stdout.write(`\r\x1b[2K  ${dot} Connected · ${clock} · waiting for a demo from the app`);
   };
   const waitOn = () => { if (tty && !ticker) { tick(); ticker = setInterval(tick, 1000); } };
   const waitOff = () => { if (ticker) { clearInterval(ticker); ticker = null; process.stdout.write("\r\x1b[2K"); } };
