@@ -284,9 +284,15 @@ if (arg === "on") {
   const cfgAt = () => readJson(path.join(cwd, ".recorder", "config.json"));
   const base = (flag("--base") || cfgAt()?.base || "https://app.demobites.com").replace(/\/+$/, "");
   const code = flag("--connect");
-  if (code || !cfgAt()?.api_key || (flag("--base") && cfgAt()?.base && cfgAt().base.replace(/\/+$/, "") !== base)) {
+  // No key and no code: the one door is the line in the app (1.21.1, after a pairing page opened in the
+  // wrong browser on 2026-10-16). Nothing here ever opens a browser on its own; `demobite login` is explicit.
+  if (!code && (!cfgAt()?.api_key || (flag("--base") && cfgAt()?.base && cfgAt().base.replace(/\/+$/, "") !== base))) {
+    warn("Not connected. In the app, open Create → Agentic Capture and run the line in the banner on this machine.");
+    process.exit(1);
+  }
+  if (code) {
     console.log("");
-    const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs"), base, ...(code ? ["--connect", code] : [])], { stdio: "inherit", cwd });
+    const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs"), base, "--connect", code], { stdio: "inherit", cwd });
     if (r.status !== 0) process.exit(r.status ?? 1);
   }
   if (!cfgAt()?.api_key) { warn("Not connected. Run the line from the app again."); process.exit(1); }
@@ -393,9 +399,14 @@ if (arg === "listen") {
   // --connect <code>: the line the Agentic Capture chat gave — already approved
   // for the signed-in person; connects this machine without a page or a click.
   const connectCode = argvRest.includes("--connect") ? (argvRest[argvRest.indexOf("--connect") + 1] || "") : "";
-  if (connectCode || !cfg?.api_key || (argvRest.includes("--base") && cfg?.base && cfg.base.replace(/\/+$/, "") !== base)) {
-    console.log(`\n  Connecting this ${connectCode ? "machine" : "project"} to your DemoBites account first…\n`);
-    const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs"), base, ...(connectCode ? ["--connect", connectCode] : [])], { stdio: "inherit", cwd: process.cwd() });
+  if (!connectCode && (!cfg?.api_key || (argvRest.includes("--base") && cfg?.base && cfg.base.replace(/\/+$/, "") !== base))) {
+    // Never a browser of its own (1.21.1): the line in the app, or `demobite login` by hand.
+    warn("Not connected. In the app, open Create → Agentic Capture and run the line in the banner on this machine, or run: demobite login");
+    process.exit(1);
+  }
+  if (connectCode) {
+    console.log(`\n  Connecting this machine to your DemoBites account first…\n`);
+    const r = spawnSync(process.execPath, [path.join(dest, "scripts", "login.mjs"), base, "--connect", connectCode], { stdio: "inherit", cwd: process.cwd() });
     if (r.status !== 0) process.exit(r.status ?? 1);
     cfg = readCfg();
   }
