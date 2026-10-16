@@ -113,12 +113,16 @@ if (arg === "logs") {
   let text = ""; try { text = fs.readFileSync(LOG, "utf8"); } catch { /* none */ }
   const lines = text.trimEnd().split("\n"); console.log(lines.slice(-n).join("\n") || "  (no log yet)"); process.exit(0);
 }
-if (arg === "off") {
+// The login service, removed: the file, the registration, and (unless we ARE the service) the listener.
+const removeService = () => {
   const def = serviceDef();
+  fs.rmSync(def.file, { force: true });
   if (process.platform === "darwin") spawnSync("launchctl", ["bootout", `gui/${process.getuid()}/${SERVICE_LABEL}`], { stdio: "ignore" });
   else if (process.platform === "linux") spawnSync("systemctl", ["--user", "disable", "--now", SERVICE_UNIT], { stdio: "ignore" });
   else spawnSync("reg", ["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", RUN_NAME, "/f"], { stdio: "ignore" });
-  fs.rmSync(def.file, { force: true });
+};
+if (arg === "off") {
+  removeService();
   const pid = killListener();
   // the browsers of an interrupted take go with it
   for (const c of readJson(CHILDREN) ?? []) { try { process.kill(process.platform === "win32" ? c : -c, "SIGTERM"); } catch { /* gone */ } }
@@ -600,8 +604,25 @@ if (arg === "listen") {
     waitOn();
   };
 
+  // DISCONNECT FROM THE APP (1.21.0, founder 2026-10-16: "go back to the connected machine via my browser
+  // and disconnect"): the app's order, taken at check-in. Says so to the app first (the key is needed for
+  // that), then the sign-ins, the ledger and the key go from this machine, the login service is removed,
+  // and the process ends. `demobite on` with a new line from the app connects it again.
+  const runOff = async (job) => {
+    console.log(`\n  ⏏ Disconnecting this machine, on your word from the app.`);
+    noteState({ busy: true, job: job.id });
+    await event(job.id, "started", { machine: name });
+    await event(job.id, "ready", { disconnected: true, machine: name });
+    const rec = path.join(process.cwd(), ".recorder");
+    for (const f of ["profile", "signins.json", "config.json", "listen.json"]) fs.rmSync(path.join(rec, f), { recursive: true, force: true });
+    noteState({ busy: false, job: null, last_error: null, disconnected: true });
+    console.log(`  ○ Disconnected. The sign-ins and the key are gone from this machine; the login service is removed.`);
+    if (SERVICE) removeService(); // bootout ends this process; the handlers below clear the lock
+    bye("OFF");
+  };
   const runJob = async (job) => {
     waitOff();
+    if (job.kind === "off") return runOff(job);
     if (job.kind === "look" || job.kind === "signin" || job.kind === "signout") return runLookOrSignin(job);
     const model = typeof job.model === "string" && job.model ? job.model : JOB_MODEL;
     // Alive while filming (1.13.1): a heartbeat every 5 s so the rail never shows this machine
