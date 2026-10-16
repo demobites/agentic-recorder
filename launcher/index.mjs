@@ -25,6 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 const pkgRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf8"));
@@ -61,7 +62,12 @@ const LOCK = path.join(HOME, "listen.lock");
 const LOG = path.join(HOME, "listen.log");
 const STATE = path.join(HOME, "state.json");
 const CHILDREN = path.join(HOME, "children.json");
-const SERVICE_LABEL = "com.demobites.listen";
+// A second home (DEMOBITE_HOME, used by tests and rigs) gets its own service name, so `off` on a rig can
+// never unload the real one (2026-10-16: a scratch rig's `off` removed the founder's service).
+const HOME_TAG = process.env.DEMOBITE_HOME ? "." + createHash("sha1").update(HOME).digest("hex").slice(0, 8) : "";
+const SERVICE_LABEL = `com.demobites.listen${HOME_TAG}`;
+const SERVICE_UNIT = `demobite${HOME_TAG}.service`;
+const RUN_NAME = `DemoBites${HOME_TAG}`;
 const SERVICE = process.argv.includes("--service");
 const launcherPath = fileURLToPath(import.meta.url);
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
@@ -70,11 +76,11 @@ const pidAlive = (pid) => { if (!pid) return false; try { process.kill(pid, 0); 
 const ago = (iso) => { const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000)); return s < 60 ? `${s} s ago` : s < 3600 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`; };
 const serviceDef = () => {
   if (process.platform === "darwin") return { file: path.join(os.homedir(), "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`) };
-  if (process.platform === "linux") return { file: path.join(os.homedir(), ".config", "systemd", "user", "demobite.service") };
+  if (process.platform === "linux") return { file: path.join(os.homedir(), ".config", "systemd", "user", SERVICE_UNIT) };
   return { file: path.join(HOME, "service.vbs") };
 };
 const serviceInstalled = () => {
-  if (process.platform === "win32") { const r = spawnSync("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "DemoBites"], { encoding: "utf8" }); return r.status === 0; }
+  if (process.platform === "win32") { const r = spawnSync("reg", ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", RUN_NAME], { encoding: "utf8" }); return r.status === 0; }
   return fs.existsSync(serviceDef().file);
 };
 const killListener = () => {
@@ -107,8 +113,8 @@ if (arg === "logs") {
 if (arg === "off") {
   const def = serviceDef();
   if (process.platform === "darwin") spawnSync("launchctl", ["bootout", `gui/${process.getuid()}/${SERVICE_LABEL}`], { stdio: "ignore" });
-  else if (process.platform === "linux") spawnSync("systemctl", ["--user", "disable", "--now", "demobite.service"], { stdio: "ignore" });
-  else spawnSync("reg", ["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "DemoBites", "/f"], { stdio: "ignore" });
+  else if (process.platform === "linux") spawnSync("systemctl", ["--user", "disable", "--now", SERVICE_UNIT], { stdio: "ignore" });
+  else spawnSync("reg", ["delete", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", RUN_NAME, "/f"], { stdio: "ignore" });
   fs.rmSync(def.file, { force: true });
   const pid = killListener();
   // the browsers of an interrupted take go with it
@@ -322,14 +328,14 @@ if (arg === "on") {
     fs.writeFileSync(def.file, unit);
     killListener();
     spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore" });
-    const r = spawnSync("systemctl", ["--user", "enable", "--now", "demobite.service"], { encoding: "utf8" });
+    const r = spawnSync("systemctl", ["--user", "enable", "--now", SERVICE_UNIT], { encoding: "utf8" });
     if (r.status !== 0) { warn(`systemd refused the service: ${(r.stderr || "").trim()}`); process.exit(1); }
   } else {
     // Windows: a Run entry that starts the listener hidden at logon (no console window), via a tiny script.
     const q = (t) => `""${t}""`;
     const vbs = `Set sh = CreateObject("WScript.Shell")\nsh.CurrentDirectory = "${cwd}"\nsh.Run "${args.map((a) => q(a)).join(" ")} >> ${q(LOG)} 2>&1", 0, False\n`;
     fs.writeFileSync(def.file, vbs);
-    spawnSync("reg", ["add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "DemoBites", "/t", "REG_SZ", "/d", `wscript.exe "${def.file}"`, "/f"], { stdio: "ignore" });
+    spawnSync("reg", ["add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", RUN_NAME, "/t", "REG_SZ", "/d", `wscript.exe "${def.file}"`, "/f"], { stdio: "ignore" });
     killListener();
     spawnSync("wscript.exe", [def.file], { stdio: "ignore" });
   }
