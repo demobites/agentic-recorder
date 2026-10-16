@@ -562,8 +562,9 @@ if (arg === "listen") {
   // in the app (look phrases), its verdict posted as the job's result.
   const runLookOrSignin = async (job) => {
     const isLook = job.kind === "look";
-    const script = path.join(dest, "scripts", isLook ? "look.mjs" : "signin.mjs");
-    console.log(`\n  ${isLook ? "◉ Looking at" : "⚿ Sign-in at"} ${job.url}`);
+    const isOut = job.kind === "signout";
+    const script = path.join(dest, "scripts", isLook ? "look.mjs" : isOut ? "signout.mjs" : "signin.mjs");
+    console.log(`\n  ${isLook ? "◉ Looking at" : isOut ? "⊘ Signing out of" : "⚿ Sign-in at"} ${job.url}`);
     noteState({ busy: true, job: job.id });
     await event(job.id, "started", { machine: name });
     // Alive while the person signs in (a window can wait minutes): the heartbeat, or the rail calls this machine offline.
@@ -590,15 +591,18 @@ if (arg === "listen") {
     if (isLook) {
       if (verdict) await event(job.id, "looked", verdict);
       else await event(job.id, "failed", { message: "The look did not finish" });
+    } else if (isOut) {
+      if (code === 0) await event(job.id, "ready", { signedOut: true, url: job.url, ...(verdict ?? {}) });
+      else await event(job.id, "failed", { message: "The sign-out did not complete" });
     } else if (code === 0) await event(job.id, "ready", { signedIn: true, url: job.url });
     else await event(job.id, "failed", { message: "The sign-in did not complete" });
-    console.log(`  ■ ${isLook ? `Look: ${verdict?.access ?? "failed"}` : code === 0 ? "Signed in." : "Sign-in did not complete."}\n`);
+    console.log(`  ■ ${isLook ? `Look: ${verdict?.access ?? "failed"}` : isOut ? (code === 0 ? "Signed out." : "Sign-out did not complete.") : code === 0 ? "Signed in." : "Sign-in did not complete."}\n`);
     waitOn();
   };
 
   const runJob = async (job) => {
     waitOff();
-    if (job.kind === "look" || job.kind === "signin") return runLookOrSignin(job);
+    if (job.kind === "look" || job.kind === "signin" || job.kind === "signout") return runLookOrSignin(job);
     const model = typeof job.model === "string" && job.model ? job.model : JOB_MODEL;
     // Alive while filming (1.13.1): a heartbeat every 5 s so the rail never shows this machine
     // offline mid-take (the gap after the last step used to do exactly that).
