@@ -509,11 +509,41 @@ if (arg === "listen") {
   })();
   writeJson(LOCK, { pid: process.pid, since: new Date().toISOString(), cwd: process.cwd(), service: SERVICE, repo });
   const noteState = (extra) => writeJson(STATE, { at: new Date().toISOString(), machine_id: listen.machine_id, name, base, workspace: cfg.workspace?.name ?? null, ...extra });
+  // PERSONAS (1.27.0, founder 2026-10-17: "the same domain, but three different users sign in, so three tabs"):
+  // a tab's jobs run in the tab's own Chrome profile, seeded once from the machine's profile (so what was
+  // signed in stays), with its own ledger. The server names the profile on the job ("t12"); none = the machine's.
+  const SKIP_IN_PROFILE = /^(Singleton|lockfile$|.*Cache$|Crashpad$|BrowserMetrics|Safe Browsing|component_crx_cache|extensions_crx_cache)/i;
+  const rec = () => path.join(process.cwd(), ".recorder");
+  const profileFor = (job) => {
+    const key = typeof job?.profile === "string" && /^[a-z0-9_-]{1,40}$/i.test(job.profile) ? job.profile : null;
+    if (!key) return {};
+    const dir = path.join(rec(), "profiles", key);
+    const ledger = path.join(rec(), "sessions", `${key}.json`);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      const base = path.join(rec(), "profile");
+      if (fs.existsSync(base)) { try { fs.cpSync(base, dir, { recursive: true, force: true, filter: (src) => !SKIP_IN_PROFILE.test(path.basename(src)) }); } catch (e) { console.log(`  ! profile seed: ${e.message}`); } }
+      fs.mkdirSync(path.dirname(ledger), { recursive: true });
+      if (!fs.existsSync(ledger)) { try { fs.copyFileSync(path.join(rec(), "signins.json"), ledger); } catch { fs.writeFileSync(ledger, JSON.stringify({ origins: {} }, null, 2) + "\n"); } }
+      console.log(`  · a profile of its own for this tab (${key}), seeded from the machine's`);
+    }
+    return { RECORDER_PROFILE: dir, RECORDER_LEDGER: ledger };
+  };
   const readiness = () => {
     let signins = [], whos = {};
     try { const l = JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "signins.json"), "utf8")); signins = Object.keys(l.origins || {}); whos = l.who && typeof l.who === "object" ? l.who : {}; } catch { /* none */ }
+    // Every session on this machine, by profile: the machine's own, then each tab's.
+    const sessions = [];
+    for (const o of signins) sessions.push({ profile: "default", origin: o, who: whos[o] ?? null });
+    try {
+      const dir = path.join(process.cwd(), ".recorder", "sessions");
+      for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+        if (!f.endsWith(".json")) continue;
+        try { const l = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); const key = f.slice(0, -5); for (const o of Object.keys(l.origins || {})) sessions.push({ profile: key, origin: o, who: l.who?.[o] ?? null }); } catch { /* skip */ }
+      }
+    } catch { /* none */ }
     const repos = Object.entries(readJson(reposFile(process.cwd())) ?? {}).filter(([, v]) => v && typeof v.folder === "string" && fs.existsSync(v.folder)).map(([site, v]) => ({ site, folder: v.folder, repo: v.repo ?? null }));
-    return { ...agentInfo, chrome: haveChrome, recorder: pkg.version, signins, whos, cwd: process.cwd(), platform: process.platform, repo, repos };
+    return { ...agentInfo, chrome: haveChrome, recorder: pkg.version, signins, whos, sessions, cwd: process.cwd(), platform: process.platform, repo, repos };
   };
   // The code bound to a job's site (1.22.0): the planner reads there.
   const codeFor = (url) => { try { const site = siteOf(new URL(url).hostname); const b = (readJson(reposFile(process.cwd())) ?? {})[site]; return b && fs.existsSync(b.folder) ? { site, ...b } : null; } catch { return null; } };
@@ -624,7 +654,7 @@ if (arg === "listen") {
     // Alive while the person signs in (a window can wait minutes): the heartbeat, or the rail calls this machine offline.
     const heartbeat = setInterval(() => { void api({ action: "checkin", machine_id: listen.machine_id, name, readiness: readiness(), busy: true }); }, 5000);
     const { spawn } = await import("node:child_process");
-    const child = spawn(process.execPath, [script, job.url], { cwd: process.cwd(), env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1" }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+    const child = spawn(process.execPath, [script, job.url, ...(job.fresh && !isLook && !isOut ? ["--fresh"] : [])], { cwd: process.cwd(), env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1", ...profileFor(job) }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     track(child);
     let verdict = null;
     let buf = "";
@@ -664,7 +694,7 @@ if (arg === "listen") {
     await event(job.id, "started", { machine: name });
     await event(job.id, "ready", { disconnected: true, machine: name });
     const rec = path.join(process.cwd(), ".recorder");
-    for (const f of ["profile", "signins.json", "config.json", "listen.json"]) fs.rmSync(path.join(rec, f), { recursive: true, force: true });
+    for (const f of ["profile", "profiles", "sessions", "signins.json", "config.json", "listen.json"]) fs.rmSync(path.join(rec, f), { recursive: true, force: true });
     noteState({ busy: false, job: null, last_error: null, disconnected: true });
     console.log(`  ○ Disconnected. The sign-ins and the key are gone from this machine; the login service is removed.`);
     if (SERVICE) removeService(); // bootout ends this process; the handlers below clear the lock
@@ -705,7 +735,7 @@ if (arg === "listen") {
       // during a take and the rail called the machine offline mid-recording (founder 2026-10-15 17:39).
       const bound = job.url ? codeFor(job.url) : null;
       if (bound) console.log(`  Code: ${bound.repo ?? bound.site} (${bound.folder.replace(os.homedir(), "~")})`);
-      const child = (await import("node:child_process")).spawn(process.execPath, [path.join(dest, "scripts", "plan.mjs"), takeDir], { cwd: process.cwd(), stdio: "inherit", env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1", ...(bound ? { DEMOBITES_CODE_DIR: bound.folder } : {}) }, detached: process.platform !== "win32" });
+      const child = (await import("node:child_process")).spawn(process.execPath, [path.join(dest, "scripts", "plan.mjs"), takeDir], { cwd: process.cwd(), stdio: "inherit", env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1", ...(bound ? { DEMOBITES_CODE_DIR: bound.folder } : {}), ...profileFor(job) }, detached: process.platform !== "win32" });
       track(child);
       const code = await new Promise((resolve) => child.on("close", resolve));
       const st = await api({ action: "poll", job_id: job.id });

@@ -20,7 +20,7 @@ const host = target.host;
 say(`Knocking on ${host}…`);
 
 let ledger = {};
-try { ledger = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), ".recorder", "signins.json"), "utf8")).origins ?? {}; } catch { /* none yet */ }
+try { ledger = JSON.parse(fs.readFileSync(process.env.RECORDER_LEDGER ? path.resolve(process.env.RECORDER_LEDGER) : path.resolve(process.cwd(), ".recorder", "signins.json"), "utf8")).origins ?? {}; } catch { /* none yet */ }
 
 const { chromium } = await import("playwright");
 const profileDir = process.env.RECORDER_PROFILE || path.resolve(process.cwd(), ".recorder", "profile");

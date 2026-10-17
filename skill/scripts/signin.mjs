@@ -29,7 +29,9 @@ import path from "node:path";
 import { postEvent } from "./listen-event.mjs";
 
 const argv = process.argv.slice(2);
-const ledgerPath = path.resolve(process.cwd(), ".recorder", "signins.json");
+// PERSONAS (1.27.0, founder 2026-10-17: "three different users sign in, three tabs"): a tab has its own profile
+// and its own ledger (RECORDER_PROFILE / RECORDER_LEDGER from the listener); the defaults are the machine's.
+const ledgerPath = process.env.RECORDER_LEDGER ? path.resolve(process.env.RECORDER_LEDGER) : path.resolve(process.cwd(), ".recorder", "signins.json");
 const readLedger = () => { try { return JSON.parse(fs.readFileSync(ledgerPath, "utf8")); } catch { return { origins: {} }; } };
 if (argv[0] === "--check") {
   let origin; try { origin = new URL(argv[1]).origin; } catch { console.error("Usage: node scripts/signin.mjs --check <url>"); process.exit(2); }
@@ -41,6 +43,8 @@ const { chromium } = await import("playwright"); // after --check, which needs n
 const url = argv.find((a) => !a.startsWith("--"));
 if (!url) { console.error("Usage: node scripts/signin.mjs <login url> [--timeout <ms>] [--probe]"); process.exit(2); }
 const probe = argv.includes("--probe");
+// --fresh: sign in as a different user — the site's cookies in THIS profile go first, so the wall shows.
+const fresh = argv.includes("--fresh");
 const timeoutMs = Number(argv[argv.indexOf("--timeout") + 1]) || 10 * 60 * 1000;
 const profileDir = process.env.RECORDER_PROFILE || path.resolve(process.cwd(), ".recorder", "profile");
 
@@ -60,6 +64,15 @@ try {
   ctx = await chromium.launchPersistentContext(profileDir, launchOpts);
 }
 const page = ctx.pages()[0] ?? (await ctx.newPage());
+if (fresh) {
+  try {
+    const host = new URL(url).hostname;
+    const site = host.split(".").slice(-2).join(".");
+    await ctx.clearCookies({ domain: new RegExp(`(^|\\.)${site.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") });
+    try { const l = readLedger(); for (const o of Object.keys(l.origins ?? {})) { try { if (new URL(o).hostname.endsWith(site)) { delete l.origins[o]; if (l.who) delete l.who[o]; } } catch { /* skip */ } } fs.writeFileSync(ledgerPath, JSON.stringify(l, null, 2) + "\n"); } catch { /* fine */ }
+    console.log(`· Forgot ${site} in this tab's profile; sign in as the other user.`);
+  } catch { /* the wall may still show */ }
+}
 await page.goto(url, { waitUntil: "domcontentloaded" });
 const startPath = new URL(page.url()).pathname;
 

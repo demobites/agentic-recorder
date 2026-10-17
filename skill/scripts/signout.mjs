@@ -32,7 +32,7 @@ export const siteOf = (hostname) => {
 const site = siteOf(target.hostname);
 const ofSite = (hostname) => { const h = String(hostname).replace(/^\./, "").toLowerCase(); return h === site || h.endsWith("." + site); };
 
-const ledgerPath = path.resolve(process.cwd(), ".recorder", "signins.json");
+const ledgerPath = process.env.RECORDER_LEDGER ? path.resolve(process.env.RECORDER_LEDGER) : path.resolve(process.cwd(), ".recorder", "signins.json");
 let ledger = { origins: {} };
 try { ledger = JSON.parse(fs.readFileSync(ledgerPath, "utf8")); } catch { /* none */ }
 const origins = Object.keys(ledger.origins ?? {}).filter((o) => { try { return ofSite(new URL(o).hostname); } catch { return false; } });
