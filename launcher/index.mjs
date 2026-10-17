@@ -700,7 +700,7 @@ if (arg === "listen") {
       await event(job.id, "started", { machine: name });
       const takeDir = path.join(process.cwd(), ".recorder", "takes", job.id);
       fs.mkdirSync(takeDir, { recursive: true });
-      fs.writeFileSync(path.join(takeDir, "job.json"), JSON.stringify({ id: job.id, brief: job.brief, url: job.url ?? null, model, review_storyboard: job.review_storyboard !== false, ...(job.retake_of ? { retake_of: job.retake_of, retake_note: job.retake_note ?? null, storyboard: job.storyboard ?? null } : {}) }, null, 2) + "\n");
+      fs.writeFileSync(path.join(takeDir, "job.json"), JSON.stringify({ id: job.id, brief: job.brief, url: job.url ?? null, model, review_storyboard: job.review_storyboard !== false, code_repo: job.code_repo ?? null, ...(job.retake_of ? { retake_of: job.retake_of, retake_note: job.retake_note ?? null, storyboard: job.storyboard ?? null } : {}) }, null, 2) + "\n");
       // Spawned async (1.14.1): a spawnSync here blocked the event loop, so the 5 s heartbeat never fired
       // during a take and the rail called the machine offline mid-recording (founder 2026-10-15 17:39).
       const bound = job.url ? codeFor(job.url) : null;

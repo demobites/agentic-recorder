@@ -63,10 +63,23 @@ const rules = (() => { try { return JSON.parse(fs.readFileSync(path.resolve(".re
 // THE CODE FOLDER (1.22.0, founder 2026-10-16): the folder bound to this site with `demobite repo <site>`
 // (the listener passes it as DEMOBITES_CODE_DIR), else the folder the listener runs in.
 const CODE_DIR = process.env.DEMOBITES_CODE_DIR ? path.resolve(process.env.DEMOBITES_CODE_DIR) : process.cwd();
-const codeOn = !process.env.DEMOBITES_NO_CODE && spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { encoding: "utf8", cwd: CODE_DIR }).status === 0;
+// THE CODE ON GITHUB (1.25.0, founder 2026-10-17: "the game's going to be only GitHub"): when the job carries the
+// repository the workspace chose for its site, the files come from GitHub through the server (read-only, per
+// call, never stored here); the folder on this machine is not used for that site.
+const ghRepo = typeof job.code_repo === "string" && job.code_repo ? job.code_repo : null;
+const localOn = !process.env.DEMOBITES_NO_CODE && spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { encoding: "utf8", cwd: CODE_DIR }).status === 0;
+const codeOn = Boolean(ghRepo) || localOn;
+const codeApi = async (body) => {
+  try {
+    const res = await fetch(`${base}/api/recorder/agent/code`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.api_key}` }, body: JSON.stringify({ job_id: process.env.RECORDER_JOB, ...body }) });
+    const d = await res.json().catch(() => ({}));
+    return typeof d.text === "string" ? d.text : `(GitHub could not be read${d.error ? `: ${d.error}` : ""})`;
+  } catch (e) { return `(GitHub could not be read: ${e.message})`; }
+};
 const SECRET_RE = /(^|\/)(\.env(\..*)?|.*\.(pem|key|p12|pfx|crt)|.*secret.*|.*credential.*|\.recorder\/.*|node_modules\/.*|\.git\/.*|.*\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/i;
 const UI_RE = /(^|\/)(app|pages|routes|src|components|views|screens|navigation|nav|layouts?|lib\/(nav|routes|menu))(\/|$)|(^|\/)(route|router|routes|nav|navigation|sidebar|menu|layout|page)\.[jt]sx?$|\/page\.[jt]sx?$|\/layout\.[jt]sx?$|\/route\.[jt]s$/i;
-const listFiles = () => {
+const listFiles = async () => {
+  if (ghRepo) return codeApi({ action: "list" });
   if (!codeOn) return "(no repository here, or code sharing is off)";
   const r = spawnSync("git", ["ls-files"], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024, cwd: CODE_DIR });
   if (r.status !== 0) return "(no repository here)";
@@ -77,7 +90,8 @@ const listFiles = () => {
 };
 let reads = 0;
 const shared = [];
-const readFile = (rel) => {
+const readFile = async (rel) => {
+  if (ghRepo) return codeApi({ action: "read", path: rel });
   if (!codeOn) return "Code sharing is off on this machine.";
   if (typeof rel !== "string" || !rel.trim()) return "path required";
   const abs = path.resolve(CODE_DIR, rel);
@@ -192,14 +206,14 @@ const prune = (messages) => {
   }
 };
 
-const firstMessage = () => {
+const firstMessage = async () => {
   const vocab = startUrl ? harvest([startUrl]) : "(no starting address was given: find it from the brief, the code or by looking)";
   const parts = [
     `## The brief\n${job.brief}`,
     `## Starting address\n${startUrl || "(none given)"}`,
     `## The app's words on the starting screen\n${vocab}`,
     `## Workspace rules (version ${rules.version || 0})\n${rules.lines?.length ? rules.lines.map((l, i) => `${i + 1}. ${l}`).join("\n") : "(none)"}`,
-    `## The project's files${codeOn ? " (this machine sits in the app's repository; read_file is on)" : " (no code here)"}\n${listFiles()}`,
+    `## The project's files${ghRepo ? ` (the app's repository on GitHub, ${ghRepo}; read_file reads them there)` : codeOn ? " (this machine sits in the app's repository; read_file is on)" : " (no code here)"}\n${await listFiles()}`,
     // A RETAKE (founder 2026-10-15): the same demo again, because the app changed under it. The previous
     // storyboard is the base; the note says what to keep an eye on; the probe finds what moved.
     job.retake_of && job.storyboard
@@ -211,7 +225,7 @@ const firstMessage = () => {
 
 let storyboard = null;
 let creates = "";
-const messages = [{ role: "user", content: [{ type: "text", text: firstMessage() }] }];
+const messages = [{ role: "user", content: [{ type: "text", text: await firstMessage() }] }];
 const plan = async () => {
   say("Writing the storyboard…");
   storyboard = null;
@@ -236,8 +250,8 @@ const plan = async () => {
       let out;
       try {
         const where = (u) => { try { const x = new URL(u); return (x.pathname === "/" ? x.host : x.pathname).slice(0, 60); } catch { return String(u || "").slice(0, 60); } };
-        if (u.name === "list_files") { say("Listing the project's files…"); out = listFiles(); }
-        else if (u.name === "read_file") { say(`Reading ${String(input.path || "").slice(0, 80)}…`); out = readFile(input.path); }
+        if (u.name === "list_files") { say(ghRepo ? `Listing the files of ${ghRepo} on GitHub…` : "Listing the project's files…"); out = await listFiles(); }
+        else if (u.name === "read_file") { say(`Reading ${String(input.path || "").slice(0, 80)}${ghRepo ? " on GitHub" : ""}…`); out = await readFile(input.path); }
         else if (u.name === "harvest_words") { say(`Reading the app's own words on ${(input.urls || []).length} page${(input.urls || []).length === 1 ? "" : "s"}…`); out = harvest(input.urls); }
         else if (u.name === "explore") { say(`Walking the app from ${where(input.from)}, looking for ${String(input.looking_for || "the brief's words").slice(0, 60)}…`); out = explore(input.from, input.looking_for, input.depth); }
         else if (u.name === "screenshot") { say(`Looking at ${where(input.url)}…`); out = screenshot(input.url); }
