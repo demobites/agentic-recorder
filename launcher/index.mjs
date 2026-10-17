@@ -510,10 +510,10 @@ if (arg === "listen") {
   writeJson(LOCK, { pid: process.pid, since: new Date().toISOString(), cwd: process.cwd(), service: SERVICE, repo });
   const noteState = (extra) => writeJson(STATE, { at: new Date().toISOString(), machine_id: listen.machine_id, name, base, workspace: cfg.workspace?.name ?? null, ...extra });
   const readiness = () => {
-    let signins = [];
-    try { signins = Object.keys(JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "signins.json"), "utf8")).origins || {}); } catch { /* none */ }
+    let signins = [], whos = {};
+    try { const l = JSON.parse(fs.readFileSync(path.join(process.cwd(), ".recorder", "signins.json"), "utf8")); signins = Object.keys(l.origins || {}); whos = l.who && typeof l.who === "object" ? l.who : {}; } catch { /* none */ }
     const repos = Object.entries(readJson(reposFile(process.cwd())) ?? {}).filter(([, v]) => v && typeof v.folder === "string" && fs.existsSync(v.folder)).map(([site, v]) => ({ site, folder: v.folder, repo: v.repo ?? null }));
-    return { ...agentInfo, chrome: haveChrome, recorder: pkg.version, signins, cwd: process.cwd(), platform: process.platform, repo, repos };
+    return { ...agentInfo, chrome: haveChrome, recorder: pkg.version, signins, whos, cwd: process.cwd(), platform: process.platform, repo, repos };
   };
   // The code bound to a job's site (1.22.0): the planner reads there.
   const codeFor = (url) => { try { const site = siteOf(new URL(url).hostname); const b = (readJson(reposFile(process.cwd())) ?? {})[site]; return b && fs.existsSync(b.folder) ? { site, ...b } : null; } catch { return null; } };

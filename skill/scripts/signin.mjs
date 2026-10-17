@@ -101,13 +101,54 @@ const wallCheck = async () => {
     });
   } catch { return { wall: true }; }
 };
+// WHO SIGNED IN (1.26.0, founder 2026-10-17: "three different users sign in, three tabs… get some data about
+// the signed-in email or username"): never a credential, only what the app itself shows once you are in —
+// an email in the page, an account menu's label, the address a Google chooser was told. Best effort; null
+// is fine. It goes to the ledger beside the origin and to the app as `who`.
+let chooserEmail = null;
+const whoAmI = async () => {
+  try {
+    await page.waitForTimeout(2500);
+    const found = await page.evaluate(() => {
+      const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+      const pick = (s) => { const m = String(s || "").match(EMAIL); return m ? m[0] : null; };
+      const attrs = [];
+      for (const el of document.querySelectorAll("[aria-label], [title], img[alt], [data-email], [data-user-email]")) {
+        for (const a of ["aria-label", "title", "alt", "data-email", "data-user-email"]) { const v = el.getAttribute(a); if (v) attrs.push(v); }
+      }
+      for (const v of attrs) { const e = pick(v); if (e) return { email: e }; }
+      const text = document.body?.innerText || "";
+      const e = pick(text);
+      if (e) return { email: e };
+      for (const v of attrs) if (/account|profile|avatar|signed in as|logged in as|user menu/i.test(v)) { const name = v.replace(/^(open|toggle)\s+/i, "").replace(/\s*(menu|avatar|profile|account)\s*$/i, "").trim(); if (name && name.length <= 60 && !/^(account|profile|avatar|user)$/i.test(name)) return { name }; }
+      return null;
+    });
+    if (found?.email) return found.email.toLowerCase();
+    if (chooserEmail) return chooserEmail;
+    if (found?.name) return found.name;
+  } catch { /* nothing */ }
+  return chooserEmail;
+};
+const noteChooser = async (here) => {
+  if (!/accounts\.google\.com|login\.microsoftonline\.com|okta\.com|auth0\.com/i.test(here.host)) return;
+  try {
+    const v = await page.evaluate(() => {
+      const el = document.querySelector("[data-identifier], [data-email], input[type=email], #identifierId, input[name=loginfmt]");
+      const s = el?.getAttribute?.("data-identifier") || el?.getAttribute?.("data-email") || el?.value || "";
+      const m = String(s).match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i); return m ? m[0] : null;
+    });
+    if (v) chooserEmail = v.toLowerCase();
+  } catch { /* nothing */ }
+};
+const remember = (origin, who) => { try { const l = readLedger(); l.origins = { ...(l.origins ?? {}), [origin]: new Date().toISOString() }; if (who) l.who = { ...(l.who ?? {}), [origin]: who }; fs.mkdirSync(path.dirname(ledgerPath), { recursive: true }); fs.writeFileSync(ledgerPath, JSON.stringify(l, null, 2) + "\n"); } catch { /* the session still lives in the profile */ } };
 await page.waitForTimeout(4000);
 const first = await wallCheck();
 if (!first.wall) {
   const origin = new URL(page.url()).origin;
   console.log(`✓ No sign-in needed for ${origin}.`);
-  try { const l = readLedger(); l.origins = { ...(l.origins ?? {}), [origin]: new Date().toISOString() }; fs.mkdirSync(path.dirname(ledgerPath), { recursive: true }); fs.writeFileSync(ledgerPath, JSON.stringify(l, null, 2) + "\n"); } catch { /* fine */ }
-  await postEvent("signed_in", { origin, none: true });
+  const who = await whoAmI();
+  remember(origin, who);
+  await postEvent("signed_in", { origin, none: true, ...(who ? { who } : {}) });
   await ctx.close();
   process.exit(0);
 }
@@ -119,10 +160,12 @@ while (Date.now() - started < timeoutMs) {
   await page.waitForTimeout(1000);
   let here;
   try { here = new URL(page.url()); } catch { continue; }
-  if (here.pathname !== startPath && !/sign-?in|log-?in|auth|sso|oauth|callback/i.test(here.pathname)) {
-    console.log(`✓ Signed in. The session is saved for ${here.origin}; next time there is no question and no window.`);
-    await postEvent("signed_in", { origin: here.origin });
-    try { const l = readLedger(); l.origins = { ...(l.origins ?? {}), [here.origin]: new Date().toISOString() }; fs.mkdirSync(path.dirname(ledgerPath), { recursive: true }); fs.writeFileSync(ledgerPath, JSON.stringify(l, null, 2) + "\n"); } catch { /* the session still lives in the profile */ }
+  await noteChooser(here);
+  if (here.pathname !== startPath && !/sign-?in|log-?in|auth|sso|oauth|callback/i.test(here.pathname) && !/accounts\.google\.com|login\.microsoftonline\.com|okta\.com|auth0\.com/i.test(here.host)) {
+    const who = await whoAmI();
+    console.log(`✓ Signed in${who ? ` as ${who}` : ""}. The session is saved for ${here.origin}; next time there is no question and no window.`);
+    await postEvent("signed_in", { origin: here.origin, ...(who ? { who } : {}) });
+    remember(here.origin, who);
     await ctx.close();
     process.exit(0);
   }
