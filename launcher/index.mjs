@@ -670,9 +670,24 @@ if (arg === "listen") {
     if (SERVICE) removeService(); // bootout ends this process; the handlers below clear the lock
     bye("OFF");
   };
+  // FORGET FROM THE APP (1.24.0, founder 2026-10-17: "we can and should forget from here as well"): the
+  // app's order drops one site's folder from this machine's bindings; the planner works from the live app there.
+  const runForget = async (job) => {
+    noteState({ busy: true, job: job.id });
+    await event(job.id, "started", { machine: name });
+    let site = "";
+    try { site = siteOf(new URL(job.url).hostname); } catch { /* below */ }
+    const file = reposFile(process.cwd());
+    const repos = readJson(file) ?? {};
+    if (site && repos[site]) { delete repos[site]; writeJson(file, repos); }
+    console.log(`  ○ ${site || "that site"} no longer has code on this machine, on your word from the app.`);
+    await event(job.id, "ready", { forgot: site, machine: name });
+    noteState({ busy: false, job: null, last_error: null });
+  };
   const runJob = async (job) => {
     waitOff();
     if (job.kind === "off") return runOff(job);
+    if (job.kind === "forget") return runForget(job);
     if (job.kind === "look" || job.kind === "signin" || job.kind === "signout") return runLookOrSignin(job);
     const model = typeof job.model === "string" && job.model ? job.model : JOB_MODEL;
     // Alive while filming (1.13.1): a heartbeat every 5 s so the rail never shows this machine
