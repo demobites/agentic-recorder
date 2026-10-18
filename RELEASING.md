@@ -2,6 +2,11 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.37.0 — 2026-10-18
+
+- ONE QUESTION, EVER (founder: "at most one clarification… then go"). The planner may ask the person once; after their answer it works with what it has and hands in the storyboard, naming what it could not find in `unsure`. A second question three seconds after one dry run had left him stuck in a loop.
+- THE PERSON HEARS PHASES, NOT FINDINGS. The exploration's lines ("Nothing beyond the start page matched", "Start: … tabs: …") and the model's own sentences stay in the log; the chat hears only the planner's phases (reading, writing, looking, walking, dry run, asking, handing in).
+
 ## 1.36.0 — 2026-10-18
 
 - THE FILE IS ALREADY THE CANVAS. The manifest claims `normalized` (1920x1080, 30 fps) for what trim.mjs produces, so the ingest's transcode stream-copies the take in a couple of seconds instead of re-encoding it for twenty. The ingest probes the file against its contract before trusting the claim.
