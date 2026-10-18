@@ -2,6 +2,12 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.29.0 — 2026-10-18
+
+- THE GLIDE IS PACED BY THE CLOCK (founder, bite 1234: "planned 31 seconds, went out 46… the cursor is super duper slow"). The camera's own track showed four glides of 7.2 s, 3.6 s, 3.5 s and 4.8 s against a 1.25 s cap: the loop awaited a browser round trip on each of its ~60 sub-steps, so its pace was the protocol's latency. Now the recorded cursor advances by wall time at 60 Hz and the real mouse follows with one move in flight, skipping points it cannot keep up with. Faster by design too: 0.85 ms per design pixel, 420–900 ms.
+- THE CAMERA OBEYS THE CLOCK. The hover dwell is 1.6 s (was 3.2 s); a click that opens another page waits for a still picture (2.5 s cap) instead of a networkidle that long-pollers never let end (6 s of dead air); the mid-take navigation gates are capped at 2.5–3 s. `clock.mjs` now costs a click as glide + press + the beat (+1 s when it opens a page) and a hover as glide + the beat, so the planner's total is the take's total.
+- THE TAKE SAYS WHAT IT COST: `manifest.timing` (filmed seconds, per-step seconds, the glides' total) and one log line, so a slow take explains itself.
+
 ## 1.28.0 — 2026-10-18
 
 - THE CAMERA'S VIEWPORT IS NEVER TOUCHED (founder, bite 1234: "extremely bad glitches" — grey quarter-size frames at 0.6 s, 8.3 s, 11.1 s, 16.1 s). The live thumbnail of 1.26.0 captured the page with a CDP clip at scale 0.25; Chromium emulated that scale for the capture and the video screencast recorded it. The thumbnail is now a full-frame capture at scale 1, shrunk outside the page by ffmpeg (no ffmpeg → no thumbnail, never a glitch).

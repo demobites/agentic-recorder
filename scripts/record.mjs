@@ -148,7 +148,8 @@ fs.mkdirSync(profileDir, { recursive: true });
 // a customer's own uploaded voice. Holding a shot to cover an estimated line
 // is what produced a 60-second take with the cursor parked for 12 seconds.
 const DEFAULT_SETTLE_MS = 2200;
-const DEFAULT_HOVER_DWELL = 3200;
+// 1.6 s (was 3.2 s; the planner's clock budgets 2 s for the beat — founder 2026-10-18: planned 31 s, filmed 46 s).
+const DEFAULT_HOVER_DWELL = 1600;
 const DEFAULT_CLICK_DWELL = 700;
 const DEFAULT_CLICK_AFTER = 2000;
 const CLOSING_BEAT_MS = 2200;
@@ -681,9 +682,13 @@ async function revealedBox(step) {
 // Pace matched to the reference: a 350px move lands in ~0.75s INCLUDING its
 // deceleration tail. The ballistic shape covers most distance early, so the
 // same wall duration reads far snappier than min-jerk did.
-const GLIDE_MIN_MS = 650;
-const GLIDE_MAX_MS = 1250;
-const GLIDE_PER_PX = 1.3;
+// THE GLIDE IS PACED BY THE CLOCK (founder's take of 2026-10-18, bite 1234: four glides took 7.2 s, 3.6 s, 3.5 s and
+// 4.8 s against this cap — the loop awaited a browser round trip on each of its ~60 sub-steps, so its pace was the
+// protocol's latency, not the design). Now the recorded cursor advances by wall time at 60 Hz, and the real mouse
+// follows with at most one move in flight, skipping points it cannot keep up with.
+const GLIDE_MIN_MS = 420;
+const GLIDE_MAX_MS = 900;
+const GLIDE_PER_PX = 0.85;
 
 // LAW (ballistic motion, measured off the founder's reference hero-demo,
 // 2026-08-09): the life is in the VELOCITY PROFILE, not the path. Frame-by-
@@ -720,7 +725,6 @@ async function glide(x, y) {
   // not the 2x capture space, or every move doubles in duration and bow.
   const designDist = dist / SUPERSAMPLE;
   const dur = Math.min(GLIDE_MAX_MS, Math.max(GLIDE_MIN_MS, designDist * GLIDE_PER_PX));
-  const steps = Math.max(12, Math.round(dur / 16));
   // Near-straight trace: the reference hero-demo's moves are straight to
   // within 2% (path/chord 1.02) — a big swoop reads as fake, a trace of
   // curvature reads as a hand. 4.5% capped 20px, DETERMINISTIC.
@@ -731,36 +735,30 @@ async function glide(x, y) {
   const c1y = y0 + (y - y0) * 0.3 + perpY * arcMag * sign;
   const c2x = x0 + (x - x0) * 0.75 + perpX * arcMag * 0.35 * sign;
   const c2y = y0 + (y - y0) * 0.75 + perpY * arcMag * 0.35 * sign;
-  for (let i = 1; i <= steps; i++) {
-    const e = ballistic(i / steps);
+  const started = Date.now();
+  let inflight = null;
+  for (;;) {
+    const f = Math.min(1, (Date.now() - started) / dur);
+    const e = ballistic(f);
     const u = 1 - e;
     const nx = u * u * u * x0 + 3 * u * u * e * c1x + 3 * u * e * e * c2x + e * e * e * x;
     const ny = u * u * u * y0 + 3 * u * u * e * c1y + 3 * u * e * e * c2y + e * e * e * y;
-    // LAW (record what you animate, founder 2026-08-09): cx/cy used to be
-    // assigned only AFTER this loop, so the background sampler recorded the
-    // OLD position for the entire glide and then teleported. 98% of a real
-    // take's events were duplicates and the cursor jumped 458px in 0ms. Every
-    // reported symptom (rigid, jumping, too fast, missing where the action is,
-    // appearing and reappearing) came from that one omission — at a 3x zoom
-    // the visible frame is 640x360, so a cursor parked at the previous target
-    // is off-frame entirely. Advance the live position EVERY frame and record
-    // it, so the event track is the motion the viewer actually sees.
+    // LAW (record what you animate, founder 2026-08-09): advance the live position EVERY frame and record it, so
+    // the event track is the motion the viewer actually sees.
     cx = nx; cy = ny;
     pushMouse("move", nx, ny);
-    // The burned-in cursor only exists in the STANDALONE ending. In the
-    // DemoBites lane __recSetCursor is undefined, and awaiting a no-op
-    // evaluate cost a full protocol round trip PER STEP — it doubled the
-    // step cadence to ~33ms and made the motion chunkier than designed.
-    if (BURN_CURSOR) {
-      await page.evaluate(([a, b]) => window.__recSetCursor?.(a, b), [nx, ny]);
-    }
-    // LAW (mouse-coordinate clicks): the real mouse tracks the drawn cursor,
-    // so hover states fire naturally and the click lands where the pulse is.
-    await page.mouse.move(nx, ny);
-    await page.waitForTimeout(dur / steps);
+    // The burned-in cursor only exists in the STANDALONE ending.
+    if (BURN_CURSOR) await page.evaluate(([a, b]) => window.__recSetCursor?.(a, b), [nx, ny]);
+    // LAW (mouse-coordinate clicks): the real mouse tracks the drawn cursor, so hover states fire naturally and the
+    // click lands where the pulse is. One move in flight at a time: a slow round trip skips points, never the clock.
+    if (!inflight) inflight = page.mouse.move(nx, ny).catch(() => {}).finally(() => { inflight = null; });
+    if (f >= 1) break;
+    await page.waitForTimeout(16);
   }
+  if (inflight) await inflight;
   cx = x; cy = y;
   pushMouse("move", x, y);
+  await page.mouse.move(x, y).catch(() => {});
 }
 
 async function smoothScroll(dy, ms = 1400, within = null) {
@@ -873,7 +871,7 @@ try {
         // then stamp the window so manifest.mjs cuts it out with a fade —
         // the viewer sees page one, a fade, page two. No zoom or narration
         // may live inside that window (manifest.mjs keeps them out).
-        await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+        await page.waitForLoadState("networkidle", { timeout: 2500 }).catch(() => {});
         const paintDeadline = Date.now() + 10000;
         while (Date.now() < paintDeadline) {
           const painted = await page.evaluate(() => {
@@ -888,7 +886,7 @@ try {
           if (painted) break;
           await page.waitForTimeout(200);
         }
-        await settledPicture(6000, "navigation");
+        await settledPicture(3000, "navigation");
         await page.waitForTimeout(350);
         rec.nav = { from: navIssuedAt, to: t() };
       }
@@ -1127,7 +1125,7 @@ try {
         // the dialog opened in the middle of the screen. A step framed wide
         // already frames its result; a click that changed the URL leaves the
         // landing to the settle that follows (framed wide there).
-        if (page.url() !== urlBeforeClick) { landingPending = true; await settledPicture(5000, "landing"); }
+        if (page.url() !== urlBeforeClick) { landingPending = true; await settledPicture(2500, "landing"); }
         if (step.reveals !== false && !stepWide) {
           const opened = await revealedBox(step);
           if (opened) {
@@ -1222,8 +1220,9 @@ try {
         // the rest of the take.
         await page.waitForLoadState("domcontentloaded", { timeout: 30000 }).catch(() => {});
         if (page.url() !== urlBefore) {
-          await page.waitForLoadState("networkidle", { timeout: 6000 }).catch(() => {});
-          await settledPicture(5000, "landing");
+          // The still gate replaces a networkidle that long-pollers never let end (6 s of dead air, 2026-10-18).
+          await page.waitForLoadState("domcontentloaded", { timeout: 6000 }).catch(() => {});
+          await settledPicture(2500, "landing");
           await ensureCursor();
           await applyHideCss();
           await page.evaluate(([a, b]) => window.__recSetCursor?.(a, b), [x, y]);
@@ -1287,6 +1286,10 @@ try {
   }
   // Closing beat so the last action breathes before the cut ends.
   await page.waitForTimeout(CLOSING_BEAT_MS);
+  // THE TAKE SAYS WHAT IT COST (2026-10-18): per step, so a slow take explains itself.
+  const glides = manifest.camera.filter((c) => c.glide).map((c) => c.glide.t_end - c.glide.t_start);
+  manifest.timing = { filmed_s: Math.round(t() * 100) / 100, steps: manifest.steps.map((st) => ({ n: st.n, action: st.action, s: Math.round(((st.t_end ?? 0) - (st.t_start ?? 0)) * 100) / 100 })), glide_s: Math.round(glides.reduce((a, b) => a + b, 0) * 100) / 100, glides: glides.length };
+  console.log(`timing: filmed ${manifest.timing.filmed_s}s; steps ${manifest.timing.steps.map((st) => `${st.n}:${st.s}s`).join(" ")}; glides ${glides.length} totalling ${manifest.timing.glide_s}s`);
 } catch (e) {
   failure = e;
 }
