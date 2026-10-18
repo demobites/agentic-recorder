@@ -14,8 +14,10 @@ export const secondsOf = (s, firstNarrated) => {
     case "goto": return 0.1;
     case "settle": return Math.max(ms(s.ms, 1200) / 1000, say) + slack;
     case "scroll": return Math.max(ms(s.ms, 1900) / 1000, say) + slack;
-    case "click":
-    case "hover": return 1.0 + Math.max(ms(s.after, 2000) / 1000, say) + slack;
+    // A click: the glide (~0.7 s), the dwell and the press (0.9 s), then the beat; a click that opens another page
+    // lands first (~1 s). A hover: the glide, then the beat (1.6 s at least). Numbers of record.mjs 1.29.0.
+    case "click": return 0.7 + 0.9 + Math.max(ms(s.after, 2000) / 1000, say) + (/href|^a\b|url/i.test(String(s.selector ?? "")) || s.url ? 1.0 : 0.3) + slack;
+    case "hover": return 0.7 + Math.max(ms(s.dwell, 1600) / 1000, say) + slack;
     case "type": return 1.0 + String(s.text ?? "").length * 0.05 + Math.max(ms(s.after, 1500) / 1000, say) + slack;
     case "expect": return 0.3;
     default: return 1 + say;
