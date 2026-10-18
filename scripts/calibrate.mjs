@@ -90,7 +90,7 @@ function bboxCrossing(step) {
   return cross;
 }
 
-function roiChanges(bb) {
+function roiChanges(bb, around) {
   // ONSETS of visible change inside the padded bbox crop, in video time.
   // Not threshold crossings: hover styles animate (LinkedIn fades its row
   // background over ~150ms), and a threshold detector fires mid-fade —
@@ -101,14 +101,19 @@ function roiChanges(bb) {
   const pad = 6;
   const x0 = Math.max(0, bb.x - pad), y0 = Math.max(0, bb.y - pad);
   const w = Math.min(FRAME.w - x0, bb.w + 2 * pad), h = Math.min(FRAME.h - y0, bb.h + 2 * pad);
+  // ONLY THE WINDOW THAT MATTERS (2026-10-18: six anchors decoded the whole take six times, 48 s on the founder's
+  // Air). The caller keeps changes within [pred - 3.2, pred + 1.2]; the decode starts 3.6 s before the prediction and
+  // runs 5.2 s. Seeking the mp4 before the input is frame-accurate (decode from the keyframe, drop until the mark),
+  // and the reported pts restart at 0, so the window's start is added back.
+  const from = around == null ? 0 : Math.max(0, around - 3.6);
   const res = spawnSync(FFMPEG(), [
-    "-loglevel", "info", "-i", clean,
+    "-loglevel", "info", ...(around == null ? [] : ["-ss", String(from), "-t", "5.2"]), "-i", clean,
     "-vf", `crop=${w}:${h}:${x0}:${y0},select='gte(scene,0)',metadata=print`, "-f", "null", "-",
   ], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 });
   const err = `${res.stderr ?? ""}`;
   const rows = [];
   const re = /pts_time:([0-9.]+)[\s\S]*?lavfi\.scene_score=([0-9.]+)/g;
-  for (let m; (m = re.exec(err)); ) rows.push({ t: parseFloat(m[1]), s: parseFloat(m[2]) });
+  for (let m; (m = re.exec(err)); ) rows.push({ t: parseFloat(m[1]) + from, s: parseFloat(m[2]) });
   const onsets = [];
   for (let i = 1; i < rows.length; i++) {
     if (rows[i].s < 0.004) continue;               // not a peak-worthy change
@@ -126,7 +131,7 @@ for (const s of man.steps ?? []) {
   const wallCross = bboxCrossing(s);
   if (wallCross == null) continue;
   const pred = tb.a * wallCross + tb.b;
-  const changes = roiChanges(s.target.bbox).filter((c) => c >= pred - 3.2 && c <= pred + 1.2);
+  const changes = roiChanges(s.target.bbox, pred).filter((c) => c >= pred - 3.2 && c <= pred + 1.2);
   if (changes.length === 0) continue;
   anchors.push({ label: s.label ?? s.action, pred, changes, weight: 1 / Math.sqrt(changes.length) });
 }
