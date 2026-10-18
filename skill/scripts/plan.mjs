@@ -303,13 +303,19 @@ try {
 
 // ── The take ─────────────────────────────────────────────────────────────
 const sbFile = path.join(dir, "storyboard.json");
+// EVERY PHASE IS STAMPED (founder's take of 2026-10-18: 46 s between the video on disk and the trim, unexplained;
+// "why in God's name does it take us so long?"): the clock before each step and the seconds it took after, so the
+// next take's log names where the minutes go.
 const step = async (name, args, what) => {
+  const t0 = Date.now();
+  console.log(`  ${new Date(t0).toISOString()} ${what}…`);
   const r = spawnSync("node", [script(name), ...args], { cwd: process.cwd(), stdio: "inherit", env: process.env });
+  console.log(`  ${new Date().toISOString()} ${what}: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   if (r.status !== 0) { console.error(`  ! ${name} failed (exit ${r.status})`); await postEvent("failed", { message: `${what} did not finish` }); process.exit(1); }
 };
 const sb = JSON.parse(fs.readFileSync(sbFile, "utf8"));
 if (Array.isArray(sb.prep) && sb.prep.length) await step("cleanup.mjs", [dir, "--prep"], "Preparing the data");
-await step("record.mjs", [dir, sbFile], "Filming");
+await step("record.mjs", [dir, sbFile], "Recording");
 if (Array.isArray(sb.cleanup) && sb.cleanup.length) await step("cleanup.mjs", [dir], "Putting the data back");
 await step("trim.mjs", [dir], "Trimming the take");
 await step("calibrate.mjs", [dir], "Measuring the take");
