@@ -345,6 +345,10 @@ const wire = {
   app: man.app ?? "App",
   title: titleArg ?? man.title ?? `${man.app ?? "App"} demo`,
   frame: { width: FW, height: FH },
+  // THE FILE IS ALREADY THE CANVAS (2026-10-18: the build re-encoded every take for 22 s). trim.mjs writes exactly
+  // what the ingest's transcode would produce — 1920x1080, 30 fps, h264 yuv420p, no audio, moov first — so the
+  // manifest says so and the ingest stream-copies it (its probe still checks; a file that deviates is encoded as ever).
+  ...(FW === 1920 && FH === 1080 ? { normalized: { width: 1920, height: 1080, fps: 30 } } : {}),
   // BROWSER HEADER (2026-09-16): true by default; DemoBites adds the dark macOS bar on top at ingest. A workspace rule "No browser header" sets it false.
   ...(typeof man.browserHeader === "boolean" ? { browserHeader: man.browserHeader } : {}),
   // APPROVED STORY (founder 2026-10-15, bite 1228: "the storyteller is blabbing"): the lines came from the

@@ -2,6 +2,10 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.36.0 — 2026-10-18
+
+- THE FILE IS ALREADY THE CANVAS. The manifest claims `normalized` (1920x1080, 30 fps) for what trim.mjs produces, so the ingest's transcode stream-copies the take in a couple of seconds instead of re-encoding it for twenty. The ingest probes the file against its contract before trusting the claim.
+
 ## 1.35.0 — 2026-10-18
 
 - THE POOL (founder: "a pool that you're managing behind the scenes"). `demobite pool --base <url> --secret <pool secret>`: a box of OURS. It checks in with the pool secret, claims any workspace's cloud job, receives that job's cloud key and the person's session for the length of the take, seeds a Chrome profile from the session (seed-profile.mjs), runs the whole chain in a folder of its own (plan → record → trim → measure → pack → upload, with RECORDER_PROFILE and a ledger that says the site is signed in, so no window ever opens), and shreds the folder when the take is up. Comfort slots by instance type (5 per 2xlarge, 10 per 4xlarge, 20 per 8xlarge; `--slots` overrides). A drain order stops new claims; running takes finish.
