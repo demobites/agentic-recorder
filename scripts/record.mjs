@@ -394,7 +394,10 @@ const postFrame = async () => {
     // the JPEG OUTSIDE the page with ffmpeg. No ffmpeg → no thumbnail, never a glitch.
     const { data } = await within(frameCdp.send("Page.captureScreenshot", { format: "jpeg", quality: 60 }), 4000);
     const small = await within(shrinkJpeg(Buffer.from(data, "base64"), 480), 4000);
-    if (small) await within(postEvent("frame", { ...frameStep, jpeg: small.toString("base64") }), 8000);
+    // A BLANK STILL IS NO STILL (founder 2026-10-18: a white box with the red pill while the first page loaded). A
+    // 480 px JPEG of a white page is under 3 KB; a page with anything on it is well over. The app keeps the last real
+    // still, or says the page is loading.
+    if (small && small.length > 3000) await within(postEvent("frame", { ...frameStep, jpeg: small.toString("base64") }), 8000);
   } catch (e) {
     if (!frameWarned) { frameWarned = true; console.error(`frame: dropped (${String(e?.message ?? e).split("\n")[0]})`); }
   } finally { framing = false; }
@@ -1319,11 +1322,28 @@ if (connectedBrowser) { try { await connectedBrowser.close(); } catch {} }
 if (ownedBrowser) { try { await ownedBrowser.close(); } catch {} }
 fs.writeFileSync(path.join(DIR, "manifest.json"), JSON.stringify(manifest, null, 2));
 if (failure) {
-  console.error(`TAKE FAILED at step ${manifest.steps.length + 1}: ${failure.message}`);
+  const n = manifest.steps.length + 1;
+  const N = STORYBOARD.steps.length;
+  const st = STORYBOARD.steps[n - 1] || {};
+  console.error(`TAKE FAILED at step ${n}: ${failure.message}`);
   console.error("Partial raw.webm + manifest.json saved in", DIR);
-  process.exit(1);
+  // THE REASON REACHES THE PERSON (founder 2026-10-18, "Recording did not finish" with nothing else: "please
+  // analyze"): the step, its words, and what the camera could not do, in plain words. Exit 3 tells plan.mjs the
+  // failure is already posted.
+  const m = /no visible target for (.+)$/.exec(failure.message);
+  const what = m ? `the camera could not find ${describeTarget(m[1])} on the page` : failure.message.replace(/\s+/g, " ").slice(0, 160);
+  const label = st.name || st.label || (st.selector ? describeTarget(st.selector) : st.action) || "";
+  await postEvent("failed", { message: `The recording stopped at step ${n} of ${N}${label ? ` (${label})` : ""}: ${what}.`, step: n, N, reason: failure.message.slice(0, 300) });
+  process.exit(3);
 }
 const cursorKinds = [...new Set(mouseEvents.map((e) => e.cursor))].join(", ");
+/** A selector in the person's words: has-text('X') → "X"; aria-label → its words; else the selector itself. */
+function describeTarget(sel) {
+  const t = /has-text\(['"](.+?)['"]\)/.exec(sel)?.[1] || /aria-label=['"](.+?)['"]/.exec(sel)?.[1];
+  if (!t) return `"${sel}"`;
+  const kind = /menuitem/.test(sel) ? "in the menu" : /role=tab/.test(sel) ? "among the tabs" : /button/.test(sel) ? "as a button" : "";
+  return `"${t}"${kind ? ` ${kind}` : ""}`;
+}
 console.log(
   `DONE raw.webm + manifest.json in ${DIR} — ${manifest.duration.toFixed(1)}s, ` +
   `${manifest.steps.length} steps, ${manifest.shots.length} camera shots, ` +

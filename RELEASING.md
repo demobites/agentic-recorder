@@ -2,6 +2,12 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.32.0 — 2026-10-18
+
+- THE PLANNING CAP (founder, a 13-minute storyboard: "inconceivable"; that job ran 18 dry runs over 13 model turns). The planner gets four dry runs, or three minutes from the first, whichever comes first; after that no probe runs and the next move is the storyboard as it stands, with what it could not find named in `unsure` (a new field of submit_storyboard, shown in the chat and asked about). Code is read only when the page's own words do not name a control, never as a first move.
+- THE REASON REACHES THE PERSON (founder, "Recording did not finish": "please analyze"). A take that dies on a step posts its own failure: "The recording stopped at step 9 of 10 (pick a release): the camera could not find "Building Your Explore Center" in the menu on the page." record.mjs exits 3 to say it already spoke; plan.mjs keeps its generic line for the other steps.
+- A BLANK STILL IS NO STILL (founder: a white box with the red pill while the first page loaded). A 480 px JPEG under 3 KB is a white page and is not posted; the app keeps the last real still or says the page is loading.
+
 ## 1.31.0 — 2026-10-18
 
 - EVERY PHASE IS STAMPED (founder: "why in God's name does it take us so long?"). The founder's take of 09:16 showed 46 s between the video on disk and the trim starting, unexplained from the code. The plan chain now logs the clock before each step and the seconds it took after (Recording, Trimming, Measuring, Packing, Delivering); record.mjs logs the moment the take is saved and, since nothing after that line is work, ends itself within 3 s if a handle keeps the process alive (an unreferenced timer: a clean exit is untouched). The next take's log names the hole.
