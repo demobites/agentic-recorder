@@ -2,6 +2,11 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.34.0 — 2026-10-18
+
+- THE FIRST FRAME IS A LOADED PAGE (founder, bite 1236: "you started without the In-app Pulse loaded… after 3 seconds everything is loaded… use the trim at the start"). trim.mjs scans the first four seconds after the beacon cut for visible change; when the picture kept changing, the cut moves to the last change plus a breath (3.5 s at most) and record_from moves with it, so the timebase and every stamped moment stay true. Steps and shots that began before the first frame start on it. On the founder's take: 2.45 s later, onto the loaded page.
+- SAVING THE TAKE, FASTER (founder: "saving the data… this should be 5 seconds"; on his take the trim took 39.6 s and the measure 48.1 s). The trim encodes with the machine's own h264 (VideoToolbox on a Mac, libx264 veryfast elsewhere, a keyframe every two seconds), the glitch guard reads a 240 px picture, and the measure decodes only the five seconds around each anchor instead of the whole take six times. On the same Mac, same take, in the installed layout: trim 13 s → 9 s, measure 16 s → 10 s. The rest of the gap on his take was the machine being busy at the time.
+
 ## 1.33.0 — 2026-10-18
 
 - THE PERSON LEADS (founder: "if the planner gets stuck, he should put the customer into discussion… I wouldn't go more than 2 minutes"). The planner has a new tool, ask_person: one short question goes to the chat as a `question` event, the job waits (`waiting_answer`), and the person's words come back as the tool's result; then the dry-run counters start again. The cap is now three dry runs or two minutes from the first, and what it buys is the question, not a guessed storyboard; a second cap after an answer hands in the storyboard with `unsure`.

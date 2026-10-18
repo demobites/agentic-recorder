@@ -40,7 +40,7 @@ const clean = path.join(dir, "clean.mp4");
 // tail into a fake 1.027x, and a scene-change fit anchored on a modal that
 // took 0.49s to load tilted 0.897x. Both produced ramps of error that read as
 // a broken cursor.
-const r0 = man.record_from ?? 0;
+let r0 = man.record_from ?? 0;
 
 // Head-beacon phase 0: the identity law above fixes the RATE; the beacon
 // fixes the ANCHOR. record.mjs flashed the blank page full-frame at stamped
@@ -105,7 +105,36 @@ if ((man.beacon?.flips?.length ?? 0) >= 3) {
   }
 }
 
-const cutAt = Math.max(0, r0 - beaconDelta);
+let cutAt = Math.max(0, r0 - beaconDelta);
+
+// THE FIRST FRAME IS A LOADED PAGE (founder 2026-10-18, bite 1236: "you started without the In-app Pulse loaded…
+// after 3 seconds everything is loaded… use the trim at the start"). The camera's still-picture gate waits for the
+// outer page; an inner panel can keep loading after it. So the head of the clean take is scanned for visible change
+// in its first seconds, and when the picture kept changing, the cut moves to the last change plus a breath, and
+// record_from moves with it (the timebase stays video = wall - record_from). Bounded at 3.5 s; a still head is
+// untouched.
+const HEAD_SCAN_S = 4.0;
+const HEAD_MAX_SHIFT_S = 3.5;
+try {
+  const res = spawnSync(FFMPEG(), ["-hide_banner", "-loglevel", "info", "-i", raw, "-vf", `trim=start=${cutAt}:end=${cutAt + HEAD_SCAN_S},setpts=PTS-STARTPTS,scale=480:-2,select='gt(scene,0.02)',showinfo`, "-f", "null", "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const changes = [];
+  for (const m of `${res.stderr ?? ""}`.matchAll(/pts_time:([0-9.]+)/g)) changes.push(parseFloat(m[1]));
+  const late = changes.filter((t) => t > 0.3 && t < HEAD_SCAN_S - 0.3);
+  if (late.length) {
+    const shift = Math.min(HEAD_MAX_SHIFT_S, Math.round((late[late.length - 1] + 0.25) * 100) / 100);
+    console.log(`first frame: the picture kept changing for ${late[late.length - 1].toFixed(2)}s after the cut (${late.length} change${late.length === 1 ? "" : "s"}) — cutting ${shift.toFixed(2)}s later, to a loaded page`);
+    void postEvent("finishing", { text: "Cutting to the first loaded frame…" });
+    cutAt += shift;
+    r0 += shift;
+    man.record_from = r0;
+    man.first_frame_shift_s = shift;
+    // Nothing in the story happens before its first frame.
+    for (const st of man.steps ?? []) { if (Number(st.t_start) < r0) st.t_start = r0; if (Number(st.t_end) < r0) st.t_end = r0; }
+    for (const sh of man.shots ?? []) { if (Number(sh.t_start) < r0) sh.t_start = r0; }
+  } else console.log(`first frame: still (${changes.length} change${changes.length === 1 ? "" : "s"} in the first ${HEAD_SCAN_S}s, none after 0.3s)`);
+} catch (e) {
+  console.log(`first frame: scan skipped (${String(e?.message ?? e).split("\n")[0]})`);
+}
 
 // TAIL law (vanilla-Linux smoke 2026-09-09): raw.webm keeps receiving frames
 // while the browser context tears down — on a headless shell that was a
@@ -166,12 +195,23 @@ man.timebase = {
 fs.writeFileSync(manPath, JSON.stringify(man, null, 2));
 console.log(`timebase: video = (wall - ${r0.toFixed(3)})${speed === 1 ? "" : ` / ${speed}`}${beaconMethod ? ` (cut at raw ${cutAt.toFixed(3)}s)` : ""}`);
 
+// THE MACHINE'S OWN ENCODER (founder 2026-10-18: "saving the take… this should be 5 seconds"; the trim took 39.6 s on
+// his Air, most of it libx264 at preset medium). Apple's VideoToolbox encodes the same h264 several times faster;
+// elsewhere libx264 at a faster preset. The ingest wants h264 at 30 fps in an mp4, which both give.
+const ENCODER = (() => {
+  try {
+    const enc = execFileSync(FFMPEG(), ["-hide_banner", "-encoders"], { stdio: ["ignore", "pipe", "ignore"] }).toString();
+    if (process.platform === "darwin" && /\bh264_videotoolbox\b/.test(enc)) return ["-c:v", "h264_videotoolbox", "-b:v", "3M", "-maxrate", "4M", "-bufsize", "8M", "-profile:v", "high", "-allow_sw", "1", "-g", "60"];
+  } catch { /* libx264 */ }
+  return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "19", "-g", "60"];
+})();
+console.log(`encoder: ${ENCODER[1]}`);
 execFileSync(FFMPEG(), [
   "-y", "-loglevel", "error",
   "-i", raw,
   "-filter_complex", `[0:v]trim=${tailCut ? `start=${cutAt}:end=${tailCut}` : `start=${cutAt}`},setpts=(PTS-STARTPTS)/${speed},fps=30,format=yuv420p[out]`,
   "-map", "[out]",
-  "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+  ...ENCODER,
   "-movflags", "+faststart",
   clean,
 ], { stdio: "inherit" });
@@ -184,7 +224,7 @@ execFileSync(FFMPEG(), [
 try {
   const filters = execFileSync(FFMPEG(), ["-hide_banner", "-filters"], { stdio: ["ignore", "pipe", "ignore"] }).toString();
   if (/\bfreezeframes\b/.test(filters) && /\bsignalstats\b/.test(filters)) {
-    const stats = spawnSync(FFMPEG(), ["-hide_banner", "-loglevel", "error", "-i", clean, "-vf", "crop=iw/2:ih/2:iw/2:ih/2,signalstats,metadata=print:file=-", "-f", "null", "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    const stats = spawnSync(FFMPEG(), ["-hide_banner", "-loglevel", "error", "-i", clean, "-vf", "crop=iw/2:ih/2:iw/2:ih/2,scale=240:-2,signalstats,metadata=print:file=-", "-f", "null", "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     const bad = [];
     let frame = -1, yavg = null, ymin = null, ymax = null;
     const flush = () => { if (frame >= 0 && yavg !== null && yavg >= 118 && yavg <= 138 && ymin !== null && ymax !== null && ymax - ymin <= 24) bad.push(frame); };
@@ -208,7 +248,7 @@ try {
       graph += `[a${chain.length}]format=yuv420p[out]`;
       const fixed = path.join(dir, "clean-fixed.mp4");
       void postEvent("finishing", { text: `Replacing ${bad.length} glitch frame${bad.length === 1 ? "" : "s"}…` });
-      execFileSync(FFMPEG(), ["-y", "-loglevel", "error", "-i", clean, "-filter_complex", graph, "-map", "[out]", "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-movflags", "+faststart", fixed], { stdio: "inherit" });
+      execFileSync(FFMPEG(), ["-y", "-loglevel", "error", "-i", clean, "-filter_complex", graph, "-map", "[out]", ...ENCODER, "-movflags", "+faststart", fixed], { stdio: "inherit" });
       fs.renameSync(fixed, clean);
       man.glitch = { frames: bad.length, windows: chain.map((r) => ({ first: r.first, last: r.last })) };
       fs.writeFileSync(manPath, JSON.stringify(man, null, 2));
