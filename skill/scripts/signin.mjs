@@ -181,7 +181,37 @@ const remember = (origin, who) => { try { const l = readLedger(); l.origins = { 
 await page.waitForTimeout(4000).catch(() => {});
 if (closedByHand || page.isClosed()) closedExit("closed");
 const first = await wallCheck();
-if (!first.wall && persona) console.log(`· ${new URL(page.url()).origin} shows no sign-in wall on this page. Go to its Log in in the Chrome window and sign in; the window waits.`);
+// THE RECORDER FINDS THE LOGIN (founder 2026-10-19, 1.42.0): a public page with no wall is not where one signs in. A
+// visible "Log in" / "Sign in" link is followed; failing that the usual paths are tried; failing that the window
+// simply waits where it is and the person finds it. Nothing to type for the common case.
+const findLogin = async () => {
+  const origin = new URL(page.url()).origin;
+  let href = null;
+  try {
+    href = await page.evaluate(() => {
+      const as = [...document.querySelectorAll("a[href]")];
+      const byText = as.find((a) => /^\s*(log ?in|sign ?in|log on|sign on)\s*$/i.test(a.textContent || ""));
+      const byHref = as.find((a) => /(^|\/)(log-?in|sign-?in|auth|account\/log-?in|users\/sign_in)(\/|$|\?)/i.test(a.getAttribute("href") || ""));
+      return (byText ?? byHref)?.href ?? null;
+    });
+  } catch { /* the page may be mid-navigation */ }
+  const tries = href ? [href] : ["/login", "/signin", "/sign-in", "/auth/login", "/account/login", "/users/sign_in"].map((p) => origin + p);
+  for (const t of tries) {
+    try {
+      const r = await page.goto(t, { waitUntil: "domcontentloaded", timeout: 15000 });
+      if (r && r.status() >= 400) continue;
+      await page.waitForTimeout(1500);
+      if ((await wallCheck()).wall) return t;
+    } catch { /* next */ }
+  }
+  try { await page.goto(origin, { waitUntil: "domcontentloaded", timeout: 15000 }); } catch { /* stay */ }
+  return null;
+};
+let loginFound = null;
+if (!first.wall && persona) {
+  loginFound = await findLogin();
+  console.log(loginFound ? `· Sign in at ${loginFound} in the Chrome window; the window waits.` : `· ${new URL(page.url()).origin} shows no sign-in wall. Go to its Log in in the Chrome window and sign in; the window waits.`);
+}
 if (!first.wall && !persona) {
   const origin = new URL(page.url()).origin;
   console.log(`✓ No sign-in needed for ${origin}.`);
@@ -197,8 +227,10 @@ const started = Date.now();
 let lastCheck = "none";
 // THE WALL MUST BE SEEN FIRST (persona mode): a login path, an identity provider, or a password field; signed in =
 // out the far side of it onto a page that is neither.
-let sawWall = first.wall;
-let wallPath = first.wall ? new URL(page.url()).pathname : null;
+let sawWall = first.wall || !!loginFound;
+let wallPath = sawWall ? new URL(page.url()).pathname : null;
+// THE LOGIN PAGE, REMEMBERED (1.42.0): the same-site address where the wall stood, told to the app with signed_in.
+let loginUrl = first.wall ? page.url() : loginFound;
 while (Date.now() - started < timeoutMs) {
   if (closedByHand || page.isClosed()) closedExit("closed");
   try {
@@ -207,7 +239,7 @@ while (Date.now() - started < timeoutMs) {
     try { here = new URL(page.url()); } catch { continue; }
     await noteChooser(here);
     const loginish = /sign-?in|log-?in|auth|sso|oauth|callback/i.test(here.pathname) || /accounts\.google\.com|login\.microsoftonline\.com|okta\.com|auth0\.com/i.test(here.host);
-    if (loginish) { sawWall = true; wallPath = here.pathname; }
+    if (loginish) { sawWall = true; wallPath = here.pathname; if (!/accounts\.google\.com|login\.microsoftonline\.com|okta\.com|auth0\.com/i.test(here.host)) loginUrl = here.href.split("?")[0]; }
     else if (persona && !sawWall) { const pw = await page.evaluate(() => !!document.querySelector('input[type="password"]')).catch(() => false); if (pw) { sawWall = true; wallPath = here.pathname; } }
     const landed = persona
       ? sawWall && !loginish && here.pathname !== wallPath && (here.pathname !== startPath || !!(await whoAmI()))
@@ -215,7 +247,7 @@ while (Date.now() - started < timeoutMs) {
     if (landed) {
       const who = await whoAmI();
       console.log(`✓ Signed in${who ? ` as ${who}` : ""}. The session is saved for ${here.origin}; next time there is no question and no window.`);
-      await postEvent("signed_in", { origin: here.origin, ...(who ? { who } : {}) });
+      await postEvent("signed_in", { origin: here.origin, ...(who ? { who } : {}), ...(persona && loginUrl ? { login: loginUrl } : {}) });
       remember(here.origin, who);
       await ctx.close().catch(() => {});
       process.exit(0);
