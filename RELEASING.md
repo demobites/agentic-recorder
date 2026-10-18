@@ -2,6 +2,11 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.31.0 — 2026-10-18
+
+- EVERY PHASE IS STAMPED (founder: "why in God's name does it take us so long?"). The founder's take of 09:16 showed 46 s between the video on disk and the trim starting, unexplained from the code. The plan chain now logs the clock before each step and the seconds it took after (Recording, Trimming, Measuring, Packing, Delivering); record.mjs logs the moment the take is saved and, since nothing after that line is work, ends itself within 3 s if a handle keeps the process alive (an unreferenced timer: a clean exit is untouched). The next take's log names the hole.
+- THE WORD IS "RECORDING" (founder: "I don't like the word filming"): the progress bar and the step's name in the log and in the failure message.
+
 ## 1.30.2 — 2026-10-18
 
 - THE FIT WORKS WHERE IT IS INSTALLED. trim.mjs imported the camera's clock at `../skill/scripts/clock.mjs`, the repository's layout; the installed skill flattens `skill/scripts` and `scripts` into one `scripts` folder, so on a real machine the import failed and the fit to the plan was silently skipped ("speed: as filmed (Cannot find module …)" on the founder's take of 09:16). The clock is now looked up beside trim.mjs first, then in the repository layout. Second lesson of the day: a release is tested on the installed layout, not in the checkout.

@@ -856,7 +856,7 @@ try {
     process.stdout.write(`step ${rec.n} ${step.action} ${step.label ?? ""}\n`);
     // The customer's line (founder 2026-10-14): one bar, step n of N. The
     // agent relays this, never the step/action lines above.
-    { const N = STORYBOARD.steps.length, filled = Math.round((rec.n / N) * 20); process.stdout.write(`Filming  ${"█".repeat(filled)}${"░".repeat(20 - filled)}  step ${rec.n} of ${N}\n`); void postEvent("filming", { n: rec.n, N }); frameStep = { n: rec.n, N }; void postFrame(); }
+    { const N = STORYBOARD.steps.length, filled = Math.round((rec.n / N) * 20); process.stdout.write(`Recording  ${"█".repeat(filled)}${"░".repeat(20 - filled)}  step ${rec.n} of ${N}\n`); void postEvent("filming", { n: rec.n, N }); frameStep = { n: rec.n, N }; void postFrame(); }
     if (step.action === "goto") {
       const navIssuedAt = t();
       // domcontentloaded, not load: a heavy site behind a proxy (the cloud
@@ -1330,3 +1330,8 @@ console.log(
   `${mouseEvents.length} mouse events (${cursorKinds})` +
   `${BURN_CURSOR ? ", cursor BURNED IN" : ", cursor rendered by the studio"}`,
 );
+// THE EXIT IS BOUNDED (2026-10-18): the take is on disk and the manifest written; nothing after this line is work.
+// The clock says when we got here, and a timer that holds no reference ends the process within 3 s should anything
+// (a browser handle, a socket) keep the event loop alive — the founder's take sat here for 46 s.
+console.log(`${new Date().toISOString()} take saved; exiting`);
+setTimeout(() => process.exit(0), 3000).unref();
