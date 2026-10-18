@@ -714,10 +714,24 @@ if (arg === "listen") {
     await event(job.id, "ready", { forgot: site, machine: name });
     noteState({ busy: false, job: null, last_error: null });
   };
+  // THE SESSION MOVES (2026-10-18, their consent in the app): this machine exports the sign-in its profile holds
+  // at the job's site and hands it to the vault with its own key. Counts come back; nothing else is said.
+  const runVault = async (job) => {
+    noteState({ busy: true, job: job.id });
+    await event(job.id, "started", { machine: name });
+    const env = { ...process.env, RECORDER_BASE: base, ...profileFor(job) };
+    const r = spawnSync(process.execPath, [path.join(dest, "scripts", "export-session.mjs"), env.RECORDER_PROFILE || path.join(process.cwd(), ".recorder", "profile"), job.url], { cwd: process.cwd(), encoding: "utf8", env });
+    const line = (r.stdout || "").trim().split("\n").filter((l) => l.startsWith("RESULT ")).pop();
+    let out = null; try { out = JSON.parse(line.slice(7)); } catch { /* none */ }
+    if (r.status === 0 && out) { console.log(`  ○ Your sign-in at ${new URL(job.url).host} is in the vault for the cloud (${out.cookies} cookies).`); await event(job.id, "ready", { ...out, machine: name }); }
+    else { const why = (r.stderr || r.stdout || "").trim().split("\n").pop() || `exit ${r.status}`; console.log(`  ! The sign-in could not be moved: ${why}`); await event(job.id, "failed", { message: r.status === 3 ? "No sign-in at that site on this machine yet" : `The sign-in could not be moved (${why.slice(0, 120)})` }); }
+    noteState({ busy: false, job: null, last_error: null });
+  };
   const runJob = async (job) => {
     waitOff();
     if (job.kind === "off") return runOff(job);
     if (job.kind === "forget") return runForget(job);
+    if (job.kind === "vault") return runVault(job);
     if (job.kind === "look" || job.kind === "signin" || job.kind === "signout") return runLookOrSignin(job);
     const model = typeof job.model === "string" && job.model ? job.model : JOB_MODEL;
     // Alive while filming (1.13.1): a heartbeat every 5 s so the rail never shows this machine
@@ -794,6 +808,13 @@ if (arg === "listen") {
     else if (r && Date.now() - updateCheckedAt > 60 * 60 * 1000) await selfUpdate();
     else await sleep(5000);
   }
+}
+
+// ── 2c. THE POOL (2026-10-18): a box of ours, many workspaces, no key of its own ──────────────
+//   demobite pool --base <url> --secret <pool secret> [--slots N] [--name <box>]
+if (arg === "pool") {
+  const r = spawnSync(process.execPath, [path.join(dest, "scripts", "pool.mjs"), ...process.argv.slice(3)], { stdio: "inherit", cwd: process.cwd(), env: process.env });
+  process.exit(r.status ?? 0);
 }
 
 // ── 3. Subcommands ─────────────────────────────────────────────────────────

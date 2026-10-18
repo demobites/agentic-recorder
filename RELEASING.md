@@ -2,6 +2,11 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.35.0 — 2026-10-18
+
+- THE POOL (founder: "a pool that you're managing behind the scenes"). `demobite pool --base <url> --secret <pool secret>`: a box of OURS. It checks in with the pool secret, claims any workspace's cloud job, receives that job's cloud key and the person's session for the length of the take, seeds a Chrome profile from the session (seed-profile.mjs), runs the whole chain in a folder of its own (plan → record → trim → measure → pack → upload, with RECORDER_PROFILE and a ledger that says the site is signed in, so no window ever opens), and shreds the folder when the take is up. Comfort slots by instance type (5 per 2xlarge, 10 per 4xlarge, 20 per 8xlarge; `--slots` overrides). A drain order stops new claims; running takes finish.
+- THE SESSION MOVES (founder: "with his permission, we would move his credentials there"). A `vault` job from the app (their word on the persona chip): export-session.mjs reads the cookies and local storage the recorder's own Chrome profile holds at the site — never the keychain, never a password — and hands them to the vault with this machine's key. Counts come back; nothing else is printed.
+
 ## 1.34.0 — 2026-10-18
 
 - THE FIRST FRAME IS A LOADED PAGE (founder, bite 1236: "you started without the In-app Pulse loaded… after 3 seconds everything is loaded… use the trim at the start"). trim.mjs scans the first four seconds after the beacon cut for visible change; when the picture kept changing, the cut moves to the last change plus a breath (3.5 s at most) and record_from moves with it, so the timebase and every stamped moment stay true. Steps and shots that began before the first frame start on it. On the founder's take: 2.45 s later, onto the loaded page.
