@@ -520,7 +520,11 @@ const wantsWide = (step) => step.frame === "wide";
 // last click of bite 1110 (the pause switch) played at 1.12x. 1.1 s puts the
 // whole pull-out after the click lands. A click framed wide (option 2) hands
 // over to its wide landing at the same moment.
-const LANDING_PULL_OUT = 1.1;
+// 2026-10-18 (the Embed dialog of bite 1242): 0.9 s. The founder sat on the
+// clicked control while the dialog opened elsewhere — the hold on the control
+// is short, and what the click opened is framed by the result shot below (or
+// the camera is wide). The ingest caps a click shot at the same 0.9 s.
+const LANDING_PULL_OUT = 0.9;
 const wantsClose = (step) => step.frame === "close";
 // The page as a signature, so a submit that swaps the page IN PLACE (a search
 // that re-renders a list, a client-side route change) counts as a landing
@@ -621,13 +625,35 @@ const visibleBox = async (selector, minY = 0, timeout = 15000) =>
  *  dimmed backdrop while the thing you just opened sits off frame.
  *
  *  An explicit `reveals` selector wins. Otherwise look for a top-layer arrival:
- *  native menus, dialogs and popovers are exactly what a click tends to open. */
+ *  native menus, dialogs and popovers are exactly what a click tends to open.
+ *
+ *  2026-10-18 (the Embed dialog of bite 1242 — the camera sat on the Embed
+ *  button for seconds while a centred dialog with a backdrop opened): this
+ *  detector had been DEAD since SUPERSAMPLE became a Node-side constant — the
+ *  evaluate body referenced it inside the browser, threw ReferenceError on
+ *  every click, and the `.catch(() => null)` read as "nothing opened". The
+ *  constant now rides in as an argument. Two more fixes while here: (1) what
+ *  counts is what is NEW since just before the click — `markBeforeClick()`
+ *  remembers every element on the page, so a sticky header or an open side
+ *  panel is never mistaken for the result — and a plain `position: fixed`
+ *  box with no role (the Embed modal is exactly that) counts when it is new;
+ *  (2) the explicit roles now include aria-modal, data-open and
+ *  data-state=open. The caller frames the box: a box over ~55% of the
+ *  viewport in either axis is a WIDE result shot ("zoom out, like a second
+ *  layer"), never a tight shot on a dialog. */
+const REVEAL_WIDE_FRACTION = 0.55;
+const revealIsWide = (b) => b.width > VIEW.width * REVEAL_WIDE_FRACTION || b.height > VIEW.height * REVEAL_WIDE_FRACTION;
+const DOM_WALK_JS = `const els = []; const walk = (root, depth) => { if (depth > 8) return; let kids; try { kids = root.querySelectorAll("*"); } catch { return; } for (const el of kids) { els.push(el); if (el.shadowRoot) walk(el.shadowRoot, depth + 1); } }; walk(document, 0);`;
+/** Remember what is on the page the instant before a click, so the result detector can tell new from old. */
+async function markBeforeClick() {
+  await page.evaluate(`(() => { ${DOM_WALK_JS} window.__recBeforeClick = new WeakSet(els); })()`).catch(() => {});
+}
 async function revealedBox(step) {
   if (step.reveals) {
     return await visibleBox(step.reveals, 0, 4000);
   }
   const box = await page
-    .evaluate(() => {
+    .evaluate((ss) => {
       // LAW (shadow DOM, LinkedIn lesson 2026-08-08): modern apps render
       // overlays inside shadow roots. `document.querySelectorAll` does not
       // cross a shadow boundary, so a plain query reports NOTHING while the
@@ -646,12 +672,15 @@ async function revealedBox(step) {
       };
       walk(document, 0);
 
+      // No snapshot (a new document after a navigation): only explicit overlay roles can count.
+      const before = window.__recBeforeClick instanceof WeakSet ? window.__recBeforeClick : null;
       const vw = window.innerWidth, vh = window.innerHeight;
       const cands = [];
       for (const el of els) {
         if (el.id === "__rec_cursor") continue;
         const r = el.getBoundingClientRect();
-        if (r.width < 140 * SUPERSAMPLE || r.height < 70 * SUPERSAMPLE) continue;
+        if (r.width < 140 * ss || r.height < 70 * ss) continue;
+        // The backdrop (inset 0) is never the subject; the dialog sitting on it is.
         if (r.width > vw * 0.97 && r.height > vh * 0.97) continue;
         // Offscreen carousels and preloaded media are not what just opened.
         if (r.right < 0 || r.bottom < 0 || r.left > vw || r.top > vh) continue;
@@ -661,9 +690,14 @@ async function revealedBox(step) {
         const role = el.getAttribute && el.getAttribute("role");
         const explicit =
           role === "dialog" || role === "menu" || role === "alertdialog" ||
-          role === "listbox" || el.tagName === "DIALOG" || el.hasAttribute("popover");
+          role === "listbox" || el.tagName === "DIALOG" || el.hasAttribute("popover") ||
+          el.getAttribute("aria-modal") === "true" || el.hasAttribute("data-open") || el.getAttribute("data-state") === "open";
         const floating = cs.position === "fixed" || cs.position === "absolute";
         if (!explicit && !floating) continue;
+        // Something that was already there before the click is not what the click opened. Without a
+        // snapshot (a fresh document) only an explicit overlay role can count.
+        const isNew = before ? !before.has(el) : explicit;
+        if (!isNew) continue;
         cands.push({
           explicit,
           x: r.x, y: r.y, width: r.width, height: r.height,
@@ -674,7 +708,7 @@ async function revealedBox(step) {
       // is the panel itself rather than its backdrop or layout wrapper.
       cands.sort((a, b) => (b.explicit ? 1 : 0) - (a.explicit ? 1 : 0) || a.area - b.area);
       return cands[0] ?? null;
-    })
+    }, SUPERSAMPLE)
     .catch(() => null);
   return box;
 }
@@ -1081,6 +1115,8 @@ try {
         else pushShot(userShotBox(step, step.focus ? await visibleBox(step.focus, 0, 3000) : box), Math.max(shotStart, arrivalT - 0.3), t(), step.label, { n: rec.n, glide: { t_start: Math.round(shotStart * 100) / 100, t_end: Math.round(arrivalT * 100) / 100 } });
       } else {
         await page.waitForTimeout(ms(step.dwell, DEFAULT_CLICK_DWELL));
+        // The page as it is before the click, so the result detector knows what is new (2026-10-18).
+        if (step.reveals !== false && !stepWide) await markBeforeClick();
         await page.evaluate(([a, b]) => window.__recPulse?.(a, b), [x, y]);
         await page.waitForTimeout(220);
         rec.click_at = t();
@@ -1164,11 +1200,17 @@ try {
         if (step.reveals !== false && !stepWide) {
           const opened = await revealedBox(step);
           if (opened) {
+            const wide = revealIsWide(opened);
             rec.revealed = {
               x: Math.round(opened.x / SUPERSAMPLE), y: Math.round(opened.y / SUPERSAMPLE),
               w: Math.round(opened.width / SUPERSAMPLE), h: Math.round(opened.height / SUPERSAMPLE),
+              ...(wide ? { wide: true } : {}),
             };
-            pushShot(opened, rec.click_at + 0.35, t(), `${step.label ?? "click"}, result`, { n: rec.n, revealed: true });
+            // THE RESULT IS A LAYER (2026-10-18, the Embed dialog of bite 1242): a dialog most of the viewport
+            // wide or tall is a WIDE result shot from the moment the control shot hands over — the camera zooms
+            // out, like a second layer. A small menu or popover stays a tight result shot, as before.
+            if (wide) wideAfter = { tStart: closeEnd, label: `${step.label ?? "click"}, result`, extra: { n: rec.n, revealed: true } };
+            else pushShot(opened, rec.click_at + 0.35, t(), `${step.label ?? "click"}, result`, { n: rec.n, revealed: true });
             landingPending = false;
           }
         }
@@ -1249,6 +1291,7 @@ try {
         rec.enter_at = enterAt;
         if (!typeWide) pushShot(userShotBox(step, box), Math.max(shotStart, arrivalT - 0.3), enterAt, step.label ?? "type", { n: rec.n, glide: glideWin });
         const urlBefore = page.url();
+        if (!typeWide && step.reveals !== false) await markBeforeClick(); // what Enter opens is judged against this (2026-10-18)
         await page.keyboard.press("Enter");
         // A submit usually navigates: re-arm the presenter layer on the new
         // document, exactly like a goto — otherwise the cursor vanishes for
@@ -1279,11 +1322,15 @@ try {
           } else {
             const opened = await revealedBox(step);
             if (opened) {
+              const wide = revealIsWide(opened);
               rec.revealed = {
                 x: Math.round(opened.x / SUPERSAMPLE), y: Math.round(opened.y / SUPERSAMPLE),
                 w: Math.round(opened.width / SUPERSAMPLE), h: Math.round(opened.height / SUPERSAMPLE),
+                ...(wide ? { wide: true } : {}),
               };
-              pushShot(opened, enterAt + 0.35, t() + 0.3, `${step.label ?? "type"}, result`, { n: rec.n, revealed: true });
+              // A dialog most of the viewport wide or tall is a WIDE result, as after a click (2026-10-18).
+              if (wide) wideAfter = { tStart: enterAt + 0.35, label: `${step.label ?? "type"}, result`, extra: { n: rec.n, revealed: true } };
+              else pushShot(opened, enterAt + 0.35, t() + 0.3, `${step.label ?? "type"}, result`, { n: rec.n, revealed: true });
             }
           }
         }

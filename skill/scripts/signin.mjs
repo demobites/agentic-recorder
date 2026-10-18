@@ -13,6 +13,10 @@
 //   node scripts/signin.mjs <login url> [--timeout <ms>] [--probe]
 //   node scripts/signin.mjs --check <url>      "session <origin> since <date>" (exit 0) or "none" (exit 3)
 //
+// EXIT CODES of the window run: 0 signed in (or no wall) · 3 CLOSED — the person shut the window, or the wait
+// ran out with nothing signed in (founder 2026-10-18: "It didn't fail. We closed it." — not a failure, the
+// listener posts it as cancelled) · 1 a real failure (the page could not load, the browser broke).
+//
 // The ledger `.recorder/signins.json` remembers every origin signed into on
 // this profile (founder 2026-10-14: the sign-in question is asked ONCE per
 // address — tomorrow, same address, no question, no window). `--check` reads
@@ -63,7 +67,16 @@ try {
   console.error(`Real Chrome failed to launch (${String(e.message).split("\n")[0]}); falling back to bundled Chromium.`);
   ctx = await chromium.launchPersistentContext(profileDir, launchOpts);
 }
+// CLOSED BY HAND: the person shutting the Chrome window ends the context; every Playwright call after that
+// throws. The flag tells a throw from a failure apart from the person's own close.
+let closedByHand = false;
+ctx.on("close", () => { closedByHand = true; });
+const closedExit = (why) => {
+  console.log(why === "timeout" ? "○ No sign-in happened within the wait. Closing the window; nothing was saved." : "○ The sign-in window was closed before a sign-in; nothing was saved.");
+  process.exit(3);
+};
 const page = ctx.pages()[0] ?? (await ctx.newPage());
+page.on("close", () => { if (ctx.pages().length === 0) closedByHand = true; });
 if (fresh) {
   try {
     const host = new URL(url).hostname;
@@ -73,7 +86,14 @@ if (fresh) {
     console.log(`· Forgot ${site} in this tab's profile; sign in as the other user.`);
   } catch { /* the wall may still show */ }
 }
-await page.goto(url, { waitUntil: "domcontentloaded" });
+try {
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+} catch (e) {
+  if (closedByHand || page.isClosed()) closedExit("closed");
+  console.error(`The sign-in page could not be opened (${String(e.message).split("\n")[0].slice(0, 160)}).`);
+  await ctx.close().catch(() => {});
+  process.exit(1);
+}
 const startPath = new URL(page.url()).pathname;
 
 const botCheck = async () => {
@@ -154,7 +174,8 @@ const noteChooser = async (here) => {
   } catch { /* nothing */ }
 };
 const remember = (origin, who) => { try { const l = readLedger(); l.origins = { ...(l.origins ?? {}), [origin]: new Date().toISOString() }; if (who) l.who = { ...(l.who ?? {}), [origin]: who }; fs.mkdirSync(path.dirname(ledgerPath), { recursive: true }); fs.writeFileSync(ledgerPath, JSON.stringify(l, null, 2) + "\n"); } catch { /* the session still lives in the profile */ } };
-await page.waitForTimeout(4000);
+await page.waitForTimeout(4000).catch(() => {});
+if (closedByHand || page.isClosed()) closedExit("closed");
 const first = await wallCheck();
 if (!first.wall) {
   const origin = new URL(page.url()).origin;
@@ -170,24 +191,32 @@ await postEvent("signin_wait", { url });
 const started = Date.now();
 let lastCheck = "none";
 while (Date.now() - started < timeoutMs) {
-  await page.waitForTimeout(1000);
-  let here;
-  try { here = new URL(page.url()); } catch { continue; }
-  await noteChooser(here);
-  if (here.pathname !== startPath && !/sign-?in|log-?in|auth|sso|oauth|callback/i.test(here.pathname) && !/accounts\.google\.com|login\.microsoftonline\.com|okta\.com|auth0\.com/i.test(here.host)) {
-    const who = await whoAmI();
-    console.log(`✓ Signed in${who ? ` as ${who}` : ""}. The session is saved for ${here.origin}; next time there is no question and no window.`);
-    await postEvent("signed_in", { origin: here.origin, ...(who ? { who } : {}) });
-    remember(here.origin, who);
-    await ctx.close();
-    process.exit(0);
+  if (closedByHand || page.isClosed()) closedExit("closed");
+  try {
+    await page.waitForTimeout(1000);
+    let here;
+    try { here = new URL(page.url()); } catch { continue; }
+    await noteChooser(here);
+    if (here.pathname !== startPath && !/sign-?in|log-?in|auth|sso|oauth|callback/i.test(here.pathname) && !/accounts\.google\.com|login\.microsoftonline\.com|okta\.com|auth0\.com/i.test(here.host)) {
+      const who = await whoAmI();
+      console.log(`✓ Signed in${who ? ` as ${who}` : ""}. The session is saved for ${here.origin}; next time there is no question and no window.`);
+      await postEvent("signed_in", { origin: here.origin, ...(who ? { who } : {}) });
+      remember(here.origin, who);
+      await ctx.close().catch(() => {});
+      process.exit(0);
+    }
+    const state = await botCheck();
+    if (state === "failed" && lastCheck !== "failed") {
+      console.error("The page's bot check refused this window (\"Verification failed\"). Reload the page in this window once; if it fails again, this app cannot be signed into from an automated browser — tell the human plainly and stop.");
+    }
+    lastCheck = state;
+  } catch (e) {
+    // The window went away under us: the person's close, not a failure. Anything else: a real failure.
+    if (closedByHand || page.isClosed() || /closed|Target page, context or browser/i.test(String(e?.message))) closedExit("closed");
+    console.error(`The sign-in window broke (${String(e?.message).split("\n")[0].slice(0, 160)}).`);
+    await ctx.close().catch(() => {});
+    process.exit(1);
   }
-  const state = await botCheck();
-  if (state === "failed" && lastCheck !== "failed") {
-    console.error("The page's bot check refused this window (\"Verification failed\"). Reload the page in this window once; if it fails again, this app cannot be signed into from an automated browser — tell the human plainly and stop.");
-  }
-  lastCheck = state;
 }
-console.error("No sign-in happened within the wait. Closing the window; the take did not start.");
-await ctx.close();
-process.exit(1);
+await ctx.close().catch(() => {});
+closedExit("timeout");
