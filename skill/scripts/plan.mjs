@@ -136,7 +136,9 @@ const explore = (from, lookingFor, depth) => {
   fs.mkdirSync(exDir, { recursive: true });
   const child = spawnSync("node", [script("explore.mjs"), from, "--for", words, "--depth", String(Math.min(3, Math.max(1, Number(depth) || 2))), "--out", exDir], { cwd: process.cwd(), encoding: "utf8", env: process.env, maxBuffer: 64 * 1024 * 1024 });
   const lines = (child.stdout || "").split("\n");
-  for (const l of lines) if (l.startsWith("· ")) say(l.slice(2));
+  // THE PERSON HEARS PHASES, NOT FINDINGS (founder 2026-10-18: "Nothing beyond the start page matched… you need to
+  // control what you're showing to the user"): the exploration's lines stay in the log.
+  for (const l of lines) if (l.startsWith("· ")) console.log(l);
   const last = lines.filter((l) => l.startsWith("RESULT ")).pop();
   let res = null; try { res = JSON.parse(last.slice(7)); } catch { /* none */ }
   if (!res) return [{ type: "text", text: `Exploring failed: ${(child.stderr || "").trim().split("\n").pop() || "no result"}` }];
@@ -241,13 +243,17 @@ let probes = 0;
 let firstProbeAt = 0;
 let asked = 0;
 const capped = () => probes >= CAP_PROBES || (firstProbeAt && Date.now() - firstProbeAt > CAP_MS);
-const CAP_TEXT = () => asked < 2
+const CAP_TEXT = () => asked < 1
   ? `STOP (${probes} dry run${probes === 1 ? "" : "s"}, ${Math.round((Date.now() - (firstProbeAt || Date.now())) / 1000)} s since the first). No more dry runs, no more reading. Call ask_person NOW with ONE short question in plain words: what you were looking for, where you looked, and how they want to play it (where it is, or what to show instead). The person is there and knows the app. Their answer comes back as the result; then fix the storyboard from their words, probe once, and hand it in.`
   : `STOP. Hand in the storyboard NOW with submit_storyboard: keep every step that passed; a step that failed becomes a hover or a settle on the nearest element the page does have, or goes; name in \`unsure\` what you could not find.`;
 /** The question goes to the chat; the planner waits here for the person's word (up to 30 minutes). */
 const askPerson = async (text) => {
   const q = String(text || "").trim().slice(0, 600);
   if (!q) return "ask_person needs a question.";
+  // ONE QUESTION, EVER (founder 2026-10-18: "at most one clarification… then go"; a second question three seconds
+  // after one dry run left him stuck): once answered, the planner works with what it has and hands in the
+  // storyboard, naming what it could not find in `unsure`. The person fixes it from the storyboard, not from a loop.
+  if (asked >= 1) return "You asked once and they answered. No more questions: hand in the storyboard NOW with submit_storyboard — keep every step that passed, turn a step you could not place into a hover or a settle on the nearest element the page has, and name what you could not find in `unsure`.";
   say("Asking you in the chat…");
   if (!listening) return "(no chat here: decide yourself and hand in the storyboard)";
   await postEvent("question", { text: q });
@@ -273,7 +279,7 @@ const plan = async () => {
     const res = await relay(messages);
     const content = Array.isArray(res.content) ? res.content : [];
     messages.push({ role: "assistant", content });
-    for (const b of content) if (b.type === "text" && b.text?.trim()) say(b.text.trim().split("\n")[0].replace(/^[#*\-\s]+/, "").slice(0, 140));
+    for (const b of content) if (b.type === "text" && b.text?.trim()) console.log(`· ${b.text.trim().split("\n")[0].replace(/^[#*\-\s]+/, "").slice(0, 140)}`);
     const uses = content.filter((b) => b.type === "tool_use");
     if (!uses.length) {
       if (storyboard) return;
