@@ -150,6 +150,51 @@ execFileSync(FFMPEG(), [
   clean,
 ], { stdio: "inherit" });
 
+// GLITCH GUARD (founder 2026-10-18, bite 1234: "extremely bad glitches"): a frame the camera should never have
+// produced — the page painted small over a grey canvas (a viewport emulation caught by the screencast) — must never
+// reach a demo, whatever caused it. Each such frame is replaced by the last good one (freezeframes), the count is
+// logged and kept in the manifest. Detection: the bottom-right quadrant is flat mid-grey (Y≈128, almost no spread);
+// real UI there is white, dark or busy. Needs signalstats + freezeframes in the ffmpeg build; without them it skips.
+try {
+  const filters = execFileSync(FFMPEG(), ["-hide_banner", "-filters"], { stdio: ["ignore", "pipe", "ignore"] }).toString();
+  if (/\bfreezeframes\b/.test(filters) && /\bsignalstats\b/.test(filters)) {
+    const stats = spawnSync(FFMPEG(), ["-hide_banner", "-loglevel", "error", "-i", clean, "-vf", "crop=iw/2:ih/2:iw/2:ih/2,signalstats,metadata=print:file=-", "-f", "null", "-"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+    const bad = [];
+    let frame = -1, yavg = null, ymin = null, ymax = null;
+    const flush = () => { if (frame >= 0 && yavg !== null && yavg >= 118 && yavg <= 138 && ymin !== null && ymax !== null && ymax - ymin <= 24) bad.push(frame); };
+    for (const line of (stats.stdout || "").split("\n")) {
+      const f = line.match(/^frame:(\d+)/);
+      if (f) { flush(); frame = Number(f[1]); yavg = ymin = ymax = null; continue; }
+      const m = line.match(/lavfi\.signalstats\.(YAVG|YMIN|YMAX)=([\d.]+)/);
+      if (!m) continue;
+      if (m[1] === "YAVG") yavg = Number(m[2]); else if (m[1] === "YMIN") ymin = Number(m[2]); else ymax = Number(m[2]);
+    }
+    flush();
+    const total = frame + 1;
+    if (bad.length && bad.length < total * 0.5) {
+      const runs = [];
+      for (const n of bad) { const r = runs[runs.length - 1]; if (r && n === r.last + 1) r.last = n; else runs.push({ first: n, last: n }); }
+      // Replace each run with the frame before it; a run at the very start takes the first good frame after it.
+      const chain = runs.map((r) => ({ ...r, replace: r.first > 0 ? r.first - 1 : Math.min(total - 1, r.last + 1) })).filter((r) => r.replace >= 0 && r.replace < total);
+      const labels = chain.map((_, i) => `[r${i}]`).join("");
+      let graph = `[0:v]split=${chain.length + 1}[a0]${labels};`;
+      chain.forEach((r, i) => { graph += `[a${i}][r${i}]freezeframes=first=${r.first}:last=${r.last}:replace=${r.replace}[a${i + 1}];`; });
+      graph += `[a${chain.length}]format=yuv420p[out]`;
+      const fixed = path.join(dir, "clean-fixed.mp4");
+      void postEvent("finishing", { text: `Replacing ${bad.length} glitch frame${bad.length === 1 ? "" : "s"}…` });
+      execFileSync(FFMPEG(), ["-y", "-loglevel", "error", "-i", clean, "-filter_complex", graph, "-map", "[out]", "-c:v", "libx264", "-preset", "medium", "-crf", "19", "-movflags", "+faststart", fixed], { stdio: "inherit" });
+      fs.renameSync(fixed, clean);
+      man.glitch = { frames: bad.length, windows: chain.map((r) => ({ first: r.first, last: r.last })) };
+      fs.writeFileSync(manPath, JSON.stringify(man, null, 2));
+      console.log(`glitch guard: ${bad.length} frame${bad.length === 1 ? "" : "s"} in ${chain.length} window${chain.length === 1 ? "" : "s"} replaced by the last good frame (${chain.map((r) => `${(r.first / 30).toFixed(2)}–${((r.last + 1) / 30).toFixed(2)}s`).join(", ")})`);
+    } else if (bad.length) {
+      console.log(`glitch guard: ${bad.length} of ${total} frames look padded — too many to be a glitch, left as filmed`);
+    } else console.log(`glitch guard: clean (${total} frames)`);
+  } else console.log("glitch guard: skipped (ffmpeg build without signalstats/freezeframes)");
+} catch (e) {
+  console.error("glitch guard: skipped (" + String(e?.message ?? e).split("\n")[0] + ")");
+}
+
 const dur = execFileSync(FFPROBE(), [
   "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", clean,
 ]).toString().trim();

@@ -2,6 +2,12 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.28.0 — 2026-10-18
+
+- THE CAMERA'S VIEWPORT IS NEVER TOUCHED (founder, bite 1234: "extremely bad glitches" — grey quarter-size frames at 0.6 s, 8.3 s, 11.1 s, 16.1 s). The live thumbnail of 1.26.0 captured the page with a CDP clip at scale 0.25; Chromium emulated that scale for the capture and the video screencast recorded it. The thumbnail is now a full-frame capture at scale 1, shrunk outside the page by ffmpeg (no ffmpeg → no thumbnail, never a glitch).
+- THE PICTURE IS STILL (founder: "wait till the page loads before you're actually recording"; the take opened on skeleton cards). Before the first frame and after every navigation (goto, a click or Enter that changed the URL) the camera waits until no skeleton, shimmer or busy element shows and two stills 350 ms apart are identical — up to 8 s for the opening, 5–6 s for a landing.
+- GLITCH GUARD in trim: a frame the camera should never have produced (the bottom-right quadrant flat mid-grey) is replaced by the last good frame (freezeframes), counted in the log and in `manifest.glitch`; on the 2026-10-18 take: 53 frames in 5 windows, length unchanged. Skipped on an ffmpeg build without signalstats/freezeframes.
+
 ## 1.17.0 — 2026-10-15
 
 - RETAKE (founder: "a button that sits inside the demo only if it was taken by an agentic recorder… the main motivation is that something happened differently in the visual… mimicking the same thing all over again"). A job with `retake_of` carries the previous storyboard and the person's note; the launcher hands both to the planner, which keeps the steps and the lines, probes, fixes only what moved, and films without a review.

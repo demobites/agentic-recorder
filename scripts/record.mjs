@@ -12,6 +12,8 @@
 import { chromium } from "playwright";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
+import { ffmpeg as FFMPEG } from "./media-tools.mjs";
 // LISTENING (2026-10-14): the app's mailbox, when `npx demobite listen` runs
 // this take; a no-op everywhere else (the terminal flow, the cloud sandbox
 // copy that may not ship listen-event.mjs).
@@ -385,14 +387,64 @@ const postFrame = async () => {
   const within = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(`timeout ${ms} ms`)), ms))]);
   try {
     frameCdp ??= await within(ctx.newCDPSession(page), 4000);
-    const scale = Math.min(1, 480 / VIEW.width);
-    const { data } = await within(frameCdp.send("Page.captureScreenshot", { format: "jpeg", quality: 55, clip: { x: 0, y: 0, width: VIEW.width, height: VIEW.height, scale } }), 4000);
-    await within(postEvent("frame", { ...frameStep, jpeg: data }), 8000);
+    // THE CAMERA'S VIEWPORT IS NEVER TOUCHED (founder's take of 2026-10-18, bite 1234: grey quarter-size frames at
+    // 0.6 s, 8.3 s, 11.1 s, 16.1 s). A captureScreenshot with a clip at scale 0.25 made Chromium emulate that scale
+    // for the capture, and the video screencast recorded those frames. So: capture at scale 1, no clip, and shrink
+    // the JPEG OUTSIDE the page with ffmpeg. No ffmpeg → no thumbnail, never a glitch.
+    const { data } = await within(frameCdp.send("Page.captureScreenshot", { format: "jpeg", quality: 60 }), 4000);
+    const small = await within(shrinkJpeg(Buffer.from(data, "base64"), 480), 4000);
+    if (small) await within(postEvent("frame", { ...frameStep, jpeg: small.toString("base64") }), 8000);
   } catch (e) {
     if (!frameWarned) { frameWarned = true; console.error(`frame: dropped (${String(e?.message ?? e).split("\n")[0]})`); }
   } finally { framing = false; }
 };
 const framer = setInterval(() => void postFrame(), FRAME_EVERY_MS);
+/** A JPEG scaled to `width` by ffmpeg, in memory; null when ffmpeg is not there. */
+let ffmpegPath;
+function shrinkJpeg(buf, width) {
+  if (ffmpegPath === undefined) { try { ffmpegPath = FFMPEG() || null; } catch { ffmpegPath = null; } }
+  if (!ffmpegPath) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const ff = spawn(ffmpegPath, ["-hide_banner", "-loglevel", "error", "-f", "image2pipe", "-i", "pipe:0", "-vf", `scale=${width}:-2`, "-q:v", "7", "-f", "image2pipe", "-vcodec", "mjpeg", "pipe:1"], { stdio: ["pipe", "pipe", "ignore"] });
+    const out = [];
+    ff.stdout.on("data", (d) => out.push(d));
+    ff.on("error", () => resolve(null));
+    ff.on("close", (code) => resolve(code === 0 && out.length ? Buffer.concat(out) : null));
+    ff.stdin.on("error", () => {});
+    ff.stdin.end(buf);
+  });
+}
+
+/**
+ * THE PICTURE IS STILL (founder 2026-10-18: "wait till the page loads before you're actually recording"; bite 1234
+ * opened on skeleton cards). Paint is not load: text and boxes exist while thumbnails and skeletons still shimmer.
+ * This waits until no skeleton / busy / shimmer element shows AND two stills 350 ms apart are identical, up to
+ * `maxMs`. Stills are full-frame captures at scale 1: they never touch the camera's viewport.
+ */
+async function settledPicture(maxMs, label) {
+  const deadline = Date.now() + maxMs;
+  let prev = null;
+  while (Date.now() < deadline) {
+    const busy = await page.evaluate(() => {
+      let n = 0;
+      for (const el of document.querySelectorAll('.animate-pulse, [class*="skeleton" i], [class*="shimmer" i], [aria-busy="true"], [data-loading="true"]')) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 8 && r.height > 8) n++;
+      }
+      return n;
+    }).catch(() => 0);
+    let shot = null;
+    try {
+      frameCdp ??= await ctx.newCDPSession(page);
+      shot = (await frameCdp.send("Page.captureScreenshot", { format: "jpeg", quality: 25 })).data;
+    } catch { frameCdp = null; }
+    if (!busy && shot && prev && shot === prev) return true;
+    prev = shot;
+    await page.waitForTimeout(350);
+  }
+  console.log(`STILL GATE (${label}): the picture kept changing for ${Math.round(maxMs / 1000)} s — going on anyway.`);
+  return false;
+}
 
 /** Ask the element what cursor it shows. Takes the locator visibleBox already
  *  resolved — re-scanning cost ~1s of dead video per step, which inflated a
@@ -836,6 +888,7 @@ try {
           if (painted) break;
           await page.waitForTimeout(200);
         }
+        await settledPicture(6000, "navigation");
         await page.waitForTimeout(350);
         rec.nav = { from: navIssuedAt, to: t() };
       }
@@ -871,6 +924,7 @@ try {
         if (!painted) {
           console.log("PAINT GATE: page never showed real content within 15s — the take would open on a blank frame. Judge the footage carefully.");
         }
+        await settledPicture(8000, "first frame");
         const nextStep = STORYBOARD.steps[STORYBOARD.steps.indexOf(step) + 1];
         if (nextStep?.action === "expect" && nextStep.selector) {
           const sel = nextStep.text
@@ -1073,7 +1127,7 @@ try {
         // the dialog opened in the middle of the screen. A step framed wide
         // already frames its result; a click that changed the URL leaves the
         // landing to the settle that follows (framed wide there).
-        if (page.url() !== urlBeforeClick) landingPending = true;
+        if (page.url() !== urlBeforeClick) { landingPending = true; await settledPicture(5000, "landing"); }
         if (step.reveals !== false && !stepWide) {
           const opened = await revealedBox(step);
           if (opened) {
@@ -1169,6 +1223,7 @@ try {
         await page.waitForLoadState("domcontentloaded", { timeout: 30000 }).catch(() => {});
         if (page.url() !== urlBefore) {
           await page.waitForLoadState("networkidle", { timeout: 6000 }).catch(() => {});
+          await settledPicture(5000, "landing");
           await ensureCursor();
           await applyHideCss();
           await page.evaluate(([a, b]) => window.__recSetCursor?.(a, b), [x, y]);
