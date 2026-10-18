@@ -129,21 +129,44 @@ if (lastStepEnd > r0) {
   }
 }
 if (cutAt !== r0 - beaconDelta) console.log("beacon: corrected cut clamped at 0 — head shorter than the anchor error");
+
+// THE TAKE FITS ITS PLAN (founder 2026-10-18: "it's no shame to run it via ffmpeg and make it 1.4 times faster… planned
+// 30, took 46 — make it 33 or 34"). When the filmed story runs past the storyboard's own clock, the whole take is
+// sped up by ONE factor (1.5 at most) so it lands near the plan, and the timebase carries that factor: every stamped
+// moment (steps, cursor, shots) maps through video = (wall - record_from) / speed, so nothing drifts. Not a rate
+// fit (the identity law stands): a known, deliberate, uniform compression, recorded in the manifest.
+let speed = 1;
+try {
+  const { estimateTake } = await import("../skill/scripts/clock.mjs");
+  const sb = JSON.parse(fs.readFileSync(path.join(dir, "storyboard.json"), "utf8"));
+  const planned = estimateTake(sb.steps);
+  const filmed = lastStepEnd > r0 ? lastStepEnd - r0 + TAIL_BEAT_S : 0;
+  const target = planned * 1.1;
+  if (planned > 5 && filmed > target * 1.03) {
+    speed = Math.min(1.5, Math.round((filmed / target) * 100) / 100);
+    console.log(`speed: planned ${planned.toFixed(1)}s, filmed ${filmed.toFixed(1)}s — the take is sped up ${speed}x to ${(filmed / speed).toFixed(1)}s`);
+    void postEvent("finishing", { text: `Fitting the take to its plan (${speed}x)…` });
+  } else console.log(`speed: planned ${planned.toFixed(1)}s, filmed ${filmed.toFixed(1)}s — as filmed`);
+} catch (e) {
+  console.log("speed: as filmed (" + String(e?.message ?? e).split("\n")[0] + ")");
+}
+man.speed = speed;
 man.timebase = {
-  a: 1,
-  b: -r0,
-  method: "identity (raw is wall-rate; see 2026-08-09 four-lane verification)" + beaconMethod,
+  a: 1 / speed,
+  b: -r0 / speed,
+  method: (speed === 1 ? "identity (raw is wall-rate; see 2026-08-09 four-lane verification)" : `identity, then one uniform ${speed}x compression to fit the plan`) + beaconMethod,
   k: 1,
+  speed,
   videoRecordFrom: r0,
   ...(beaconMethod ? { beaconDelta } : {}),
 };
 fs.writeFileSync(manPath, JSON.stringify(man, null, 2));
-console.log(`timebase: identity, video = wall - ${r0.toFixed(3)}${beaconMethod ? ` (cut at raw ${cutAt.toFixed(3)}s)` : ""}`);
+console.log(`timebase: video = (wall - ${r0.toFixed(3)})${speed === 1 ? "" : ` / ${speed}`}${beaconMethod ? ` (cut at raw ${cutAt.toFixed(3)}s)` : ""}`);
 
 execFileSync(FFMPEG(), [
   "-y", "-loglevel", "error",
   "-i", raw,
-  "-filter_complex", `[0:v]trim=${tailCut ? `start=${cutAt}:end=${tailCut}` : `start=${cutAt}`},setpts=PTS-STARTPTS,fps=30,format=yuv420p[out]`,
+  "-filter_complex", `[0:v]trim=${tailCut ? `start=${cutAt}:end=${tailCut}` : `start=${cutAt}`},setpts=(PTS-STARTPTS)/${speed},fps=30,format=yuv420p[out]`,
   "-map", "[out]",
   "-c:v", "libx264", "-preset", "medium", "-crf", "19",
   "-movflags", "+faststart",

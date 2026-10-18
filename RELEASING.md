@@ -2,6 +2,10 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.30.0 — 2026-10-18
+
+- THE TAKE FITS ITS PLAN (founder: "it's no shame to run it via ffmpeg and make it 1.4 times faster… planned 30, took 46 — make it 33 or 34"). When the filmed story runs more than a few percent past the storyboard's clock (+10 % of air), trim speeds the whole take up by one factor, 1.5 at most, and the timebase carries it (`a = 1/speed`, `b = -record_from/speed`, `manifest.speed`): steps, cursor and shots all map through it, nothing drifts. "Fitting the take to its plan (1.37x)…" is said in the chat. A take within its plan is untouched.
+
 ## 1.29.0 — 2026-10-18
 
 - THE GLIDE IS PACED BY THE CLOCK (founder, bite 1234: "planned 31 seconds, went out 46… the cursor is super duper slow"). The camera's own track showed four glides of 7.2 s, 3.6 s, 3.5 s and 4.8 s against a 1.25 s cap: the loop awaited a browser round trip on each of its ~60 sub-steps, so its pace was the protocol's latency. Now the recorded cursor advances by wall time at 60 Hz and the real mouse follows with one move in flight, skipping points it cannot keep up with. Faster by design too: 0.85 ms per design pixel, 420–900 ms.

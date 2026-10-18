@@ -45,8 +45,10 @@ const tb = man.timebase;
 // of it compounded two shifts (-0.71 then -1.67 on one take) and produced a
 // clock that matched nothing. Re-base first, then anchor once.
 if (tb && typeof man.record_from === "number") {
-  tb.a = 1; tb.k = 1; tb.b = -man.record_from; tb.videoRecordFrom = man.record_from;
-  tb.method = "identity (raw is wall-rate; see 2026-08-09 four-lane verification)";
+  // The base keeps the take's speed (trim.mjs 1.30.0: one uniform compression to fit the plan): video = (wall - record_from) / speed.
+  const speed = typeof man.speed === "number" && man.speed > 0 ? man.speed : 1;
+  tb.a = 1 / speed; tb.k = 1; tb.speed = speed; tb.b = -man.record_from / speed; tb.videoRecordFrom = man.record_from;
+  tb.method = speed === 1 ? "identity (raw is wall-rate; see 2026-08-09 four-lane verification)" : `identity, then one uniform ${speed}x compression to fit the plan`;
 }
 if (!tb || typeof tb.a !== "number" || typeof tb.b !== "number") {
   console.error("manifest.json has no timebase stamp. Run trim.mjs first.");
