@@ -1286,12 +1286,20 @@ try {
   }
   // Closing beat so the last action breathes before the cut ends.
   await page.waitForTimeout(CLOSING_BEAT_MS);
-  // THE TAKE SAYS WHAT IT COST (2026-10-18): per step, so a slow take explains itself.
-  const glides = manifest.camera.filter((c) => c.glide).map((c) => c.glide.t_end - c.glide.t_start);
-  manifest.timing = { filmed_s: Math.round(t() * 100) / 100, steps: manifest.steps.map((st) => ({ n: st.n, action: st.action, s: Math.round(((st.t_end ?? 0) - (st.t_start ?? 0)) * 100) / 100 })), glide_s: Math.round(glides.reduce((a, b) => a + b, 0) * 100) / 100, glides: glides.length };
-  console.log(`timing: filmed ${manifest.timing.filmed_s}s; steps ${manifest.timing.steps.map((st) => `${st.n}:${st.s}s`).join(" ")}; glides ${glides.length} totalling ${manifest.timing.glide_s}s`);
 } catch (e) {
   failure = e;
+}
+// THE TAKE SAYS WHAT IT COST (2026-10-18): per step, so a slow take explains itself. A SUMMARY NEVER FAILS A TAKE
+// (1.30.1: the founder's first take through the new chain filmed all nine steps and died here, on a key that never
+// existed — `manifest.camera`; the glides live on the shots). Outside the filming try, in its own.
+try {
+  if (!failure) {
+    const glides = (manifest.shots ?? []).filter((c) => c.glide).map((c) => c.glide.t_end - c.glide.t_start);
+    manifest.timing = { filmed_s: Math.round(t() * 100) / 100, steps: manifest.steps.map((st) => ({ n: st.n, action: st.action, s: Math.round(((st.t_end ?? 0) - (st.t_start ?? 0)) * 100) / 100 })), glide_s: Math.round(glides.reduce((a, b) => a + b, 0) * 100) / 100, glides: glides.length };
+    console.log(`timing: filmed ${manifest.timing.filmed_s}s; steps ${manifest.timing.steps.map((st) => `${st.n}:${st.s}s`).join(" ")}; glides ${glides.length} totalling ${manifest.timing.glide_s}s`);
+  }
+} catch (e) {
+  console.log(`timing summary skipped: ${e.message}`);
 }
 
 clearInterval(sampler);
