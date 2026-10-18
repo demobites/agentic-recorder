@@ -22,7 +22,7 @@ import { estimateTake } from "./clock.mjs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { listening, postEvent } from "./listen-event.mjs";
+import { listening, postEvent, poll } from "./listen-event.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dir = process.argv[2];
@@ -218,7 +218,7 @@ const firstMessage = async () => {
     // storyboard is the base; the note says what to keep an eye on; the probe finds what moved.
     job.retake_of && job.storyboard
       ? `## This is a retake\nThe person wants the same demo filmed again, the same length and the same shots, because the app changed since. Their note: "${(job.retake_note || "no note").replace(/"/g, "'")}". ${job.storyboard.storyboard ? "Start from the previous storyboard below: keep its steps and its lines; probe it; fix only what no longer resolves or what the note names; then submit_storyboard. Never explore when the probe passes." : "Only the previous storyboard's lines survive (below): rebuild the same steps with the same lines, find the controls again, probe, then submit_storyboard."}\n\n## The previous storyboard\n${JSON.stringify(job.storyboard.storyboard ?? job.storyboard.steps ?? job.storyboard)}`
-      : codeOn ? `Write the storyboard from the page's own words, probe it, fix it, probe again, then submit_storyboard. Read a file only when the page's words do not name a control you need; never as a first move. You have at most 4 dry runs and 3 minutes from the first one; after that, hand in what passed and name in 'unsure' what you could not find.` : `There is no code: explore first (explore from the starting address, looking_for = the brief's nouns), then write the storyboard, probe it, fix it, probe again, then submit_storyboard. You have at most 4 dry runs and 3 minutes from the first one; after that, hand in what passed and name in 'unsure' what you could not find.`,
+      : codeOn ? `Write the storyboard from the page's own words, probe it, fix it, probe again, then submit_storyboard. Read a file only when the page's words do not name a control you need; never as a first move. You have three dry runs and two minutes from the first one; when a control of the brief is not where you looked, ask_person at once: the person is there and knows the app.` : `There is no code: explore first (explore from the starting address, looking_for = the brief's nouns), then write the storyboard, probe it, fix it, probe again, then submit_storyboard. You have three dry runs and two minutes from the first one; when a control of the brief is not where you looked, ask_person at once: the person is there and knows the app.`,
   ];
   return parts.join("\n\n");
 };
@@ -230,12 +230,40 @@ const messages = [{ role: "user", content: [{ type: "text", text: await firstMes
 // three minutes from the first one, whichever comes first. After that no probe runs; the next move is the storyboard
 // as it stands, with the steps it could not find named in `unsure`, so the person answers the question instead of
 // waiting while it rewrites and retries (that job: 18 dry runs, 13 model turns).
-const CAP_PROBES = 4;
-const CAP_MS = 3 * 60 * 1000;
+// THE PERSON LEADS (founder 2026-10-18: "if the planner gets stuck, he should put the customer into discussion…
+// I wouldn't go more than 2 minutes"): three dry runs, or two minutes from the first, and the planner ASKS — one
+// short question through the chat (ask_person); the answer comes back as the tool's result and the counters start
+// again. The person is there and knows their app; a storyboard guessed in minute six is worth less than a question
+// in minute two.
+const CAP_PROBES = 3;
+const CAP_MS = 2 * 60 * 1000;
 let probes = 0;
 let firstProbeAt = 0;
+let asked = 0;
 const capped = () => probes >= CAP_PROBES || (firstProbeAt && Date.now() - firstProbeAt > CAP_MS);
-const CAP_TEXT = () => `PLANNING CAP REACHED (${probes} dry run${probes === 1 ? "" : "s"}, ${Math.round((Date.now() - (firstProbeAt || Date.now())) / 1000)} s since the first). No more dry runs, no more reading. Hand in the storyboard NOW with submit_storyboard: keep every step that passed; a step that failed becomes a hover or a settle on the nearest element the page does have, or goes; write ONE short sentence in \`unsure\` naming what you could not find on the page (the step and the control), so the person can tell you where it is. The person is waiting.`;
+const CAP_TEXT = () => asked < 2
+  ? `STOP (${probes} dry run${probes === 1 ? "" : "s"}, ${Math.round((Date.now() - (firstProbeAt || Date.now())) / 1000)} s since the first). No more dry runs, no more reading. Call ask_person NOW with ONE short question in plain words: what you were looking for, where you looked, and how they want to play it (where it is, or what to show instead). The person is there and knows the app. Their answer comes back as the result; then fix the storyboard from their words, probe once, and hand it in.`
+  : `STOP. Hand in the storyboard NOW with submit_storyboard: keep every step that passed; a step that failed becomes a hover or a settle on the nearest element the page does have, or goes; name in \`unsure\` what you could not find.`;
+/** The question goes to the chat; the planner waits here for the person's word (up to 30 minutes). */
+const askPerson = async (text) => {
+  const q = String(text || "").trim().slice(0, 600);
+  if (!q) return "ask_person needs a question.";
+  say("Asking you in the chat…");
+  if (!listening) return "(no chat here: decide yourself and hand in the storyboard)";
+  await postEvent("question", { text: q });
+  const started = Date.now();
+  while (Date.now() - started < 30 * 60 * 1000) {
+    const st = await poll();
+    if (st?.status === "cancelled" || st?.status === "failed") { console.log("  The person cancelled."); process.exit(0); }
+    if (st && st.status !== "waiting_answer") {
+      const a = st.answer && typeof st.answer === "object" ? st.answer : null;
+      asked += 1; probes = 0; firstProbeAt = 0;
+      return a?.note ? `The person says: "${String(a.note).slice(0, 2000)}"` : "The person said to go on as you see fit.";
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  return "No answer came in 30 minutes: hand in the storyboard as it stands, with what you could not find in unsure.";
+};
 const plan = async () => {
   say("Writing the storyboard…");
   storyboard = null;
@@ -265,6 +293,7 @@ const plan = async () => {
         else if (u.name === "harvest_words") { say(`Reading the app's own words on ${(input.urls || []).length} page${(input.urls || []).length === 1 ? "" : "s"}…`); out = harvest(input.urls); }
         else if (u.name === "explore") { say(`Walking the app from ${where(input.from)}, looking for ${String(input.looking_for || "the brief's words").slice(0, 60)}…`); out = explore(input.from, input.looking_for, input.depth); }
         else if (u.name === "screenshot") { say(`Looking at ${where(input.url)}…`); out = screenshot(input.url); }
+        else if (u.name === "ask_person") { out = await askPerson(input.question); }
         else if (u.name === "probe") {
           if (capped()) out = CAP_TEXT();
           else {
