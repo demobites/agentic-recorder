@@ -514,17 +514,20 @@ if (arg === "listen") {
   // signed in stays), with its own ledger. The server names the profile on the job ("t12"); none = the machine's.
   const SKIP_IN_PROFILE = /^(Singleton|lockfile$|.*Cache$|Crashpad$|BrowserMetrics|Safe Browsing|component_crx_cache|extensions_crx_cache)/i;
   const rec = () => path.join(process.cwd(), ".recorder");
-  const profileFor = (job) => {
+  // `made`, when given, collects the paths THIS call created, so a sign-in that never happened (the person closed
+  // the window) can take its own profile away again — a persona exists only once someone signed into it.
+  const profileFor = (job, made) => {
     const key = typeof job?.profile === "string" && /^[a-z0-9_-]{1,40}$/i.test(job.profile) ? job.profile : null;
     if (!key) return {};
     const dir = path.join(rec(), "profiles", key);
     const ledger = path.join(rec(), "sessions", `${key}.json`);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
+      made?.push(dir);
       const base = path.join(rec(), "profile");
       if (fs.existsSync(base)) { try { fs.cpSync(base, dir, { recursive: true, force: true, filter: (src) => !SKIP_IN_PROFILE.test(path.basename(src)) }); } catch (e) { console.log(`  ! profile seed: ${e.message}`); } }
       fs.mkdirSync(path.dirname(ledger), { recursive: true });
-      if (!fs.existsSync(ledger)) { try { fs.copyFileSync(path.join(rec(), "signins.json"), ledger); } catch { fs.writeFileSync(ledger, JSON.stringify({ origins: {} }, null, 2) + "\n"); } }
+      if (!fs.existsSync(ledger)) { made?.push(ledger); try { fs.copyFileSync(path.join(rec(), "signins.json"), ledger); } catch { fs.writeFileSync(ledger, JSON.stringify({ origins: {} }, null, 2) + "\n"); } }
       console.log(`  · a profile of its own for this tab (${key}), seeded from the machine's`);
     }
     return { RECORDER_PROFILE: dir, RECORDER_LEDGER: ledger };
@@ -654,7 +657,8 @@ if (arg === "listen") {
     // Alive while the person signs in (a window can wait minutes): the heartbeat, or the rail calls this machine offline.
     const heartbeat = setInterval(() => { void api({ action: "checkin", machine_id: listen.machine_id, name, readiness: readiness(), busy: true }); }, 5000);
     const { spawn } = await import("node:child_process");
-    const child = spawn(process.execPath, [script, job.url, ...(job.fresh && !isLook && !isOut ? ["--fresh"] : [])], { cwd: process.cwd(), env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1", ...profileFor(job) }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+    const made = [];
+    const child = spawn(process.execPath, [script, job.url, ...(job.fresh && !isLook && !isOut ? ["--fresh"] : [])], { cwd: process.cwd(), env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1", ...profileFor(job, made) }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     track(child);
     let verdict = null;
     let buf = "";
@@ -679,8 +683,17 @@ if (arg === "listen") {
       if (code === 0) await event(job.id, "ready", { signedOut: true, url: job.url, ...(verdict ?? {}) });
       else await event(job.id, "failed", { message: "The sign-out did not complete" });
     } else if (code === 0) await event(job.id, "ready", { signedIn: true, url: job.url });
-    else await event(job.id, "failed", { message: "The sign-in did not complete" });
-    console.log(`  ■ ${isLook ? `Look: ${verdict?.access ?? "failed"}` : isOut ? (code === 0 ? "Signed out." : "Sign-out did not complete.") : code === 0 ? "Signed in." : "Sign-in did not complete."}\n`);
+    else {
+      // CLOSED IS NOT FAILED (founder 2026-10-18: "It didn't fail. We closed it."): signin.mjs exits 3 when the person
+      // shut the window or the wait ran out with nothing signed in — the job is cancelled, no alert. Any other
+      // exit is a real failure. Either way a profile made for this attempt alone goes away: no persona without a sign-in.
+      const closed = code === 3;
+      if (closed) await event(job.id, "cancelled", { status: "cancelled", error: "closed", message: "closed", url: job.url });
+      else await event(job.id, "failed", { message: "The sign-in did not complete" });
+      for (const p of made) { try { fs.rmSync(p, { recursive: true, force: true }); } catch { /* best effort */ } }
+      if (made.length) console.log(`  · the profile made for this attempt was removed again`);
+    }
+    console.log(`  ■ ${isLook ? `Look: ${verdict?.access ?? "failed"}` : isOut ? (code === 0 ? "Signed out." : "Sign-out did not complete.") : code === 0 ? "Signed in." : code === 3 ? "Sign-in window closed." : "Sign-in did not complete."}\n`);
     waitOn();
   };
 
