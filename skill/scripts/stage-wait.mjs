@@ -22,6 +22,7 @@
 // this take; a no-op everywhere else (the terminal flow, the cloud sandbox
 // copy that may not ship listen-event.mjs).
 const postEvent = await import("./listen-event.mjs").then((m) => m.postEvent).catch(() => async () => null);
+const listening = await import("./listen-event.mjs").then((m) => m.listening).catch(() => false);
 /** Where the person watches their takes: the Demos grid. `dashboardUrl` from
  * the server wins (relative or absolute), else <base>/demos. */
 export function gridUrl(base, dashboardUrl) {
@@ -151,6 +152,16 @@ export async function waitForDecision({ base, apiKey, stagingId, pageUrl, delive
     if (last.zooms === 0) console.error("WARNING: no camera shots landed.");
   }
   if (finalStudioUrl) console.log(`Studio: ${finalStudioUrl}`);
+  // THE STILLS, DRAWN HERE BEFORE "READY" (2026-10-18): the demo's intro and backdrop, by the studio's own code in
+  // this recorder's Chrome, remembered by the app so the export draws nothing. Bounded; a miss costs nothing.
+  if (listening) {
+    try {
+      const { spawnSync } = await import("node:child_process");
+      const here = (await import("node:path")).dirname((await import("node:url")).fileURLToPath(import.meta.url));
+      const r = spawnSync(process.execPath, [(await import("node:path")).join(here, "stills.mjs"), String(approvedBiteId)], { cwd: process.cwd(), encoding: "utf8", env: process.env, timeout: 60000 });
+      for (const l of (r.stdout || "").trim().split("\n").filter(Boolean)) console.log(`  ${l}`);
+    } catch (e) { console.log(`  stills: skipped (${String(e?.message ?? e).split("\n")[0]})`); }
+  }
   await postEvent("ready", { biteId: approvedBiteId, studioUrl: finalStudioUrl ?? null });
   return { exitCode: 0, status: "completed", biteId: approvedBiteId, studioUrl: finalStudioUrl };
 }
