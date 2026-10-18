@@ -137,7 +137,10 @@ if (cutAt !== r0 - beaconDelta) console.log("beacon: corrected cut clamped at 0 
 // fit (the identity law stands): a known, deliberate, uniform compression, recorded in the manifest.
 let speed = 1;
 try {
-  const { estimateTake } = await import("../skill/scripts/clock.mjs");
+  // The clock sits beside trim.mjs once installed (~/.claude/skills/agentic-recorder/scripts flattens skill/scripts and
+  // scripts into one folder) and under skill/scripts in the repository: try the installed layout first (1.30.2: on the
+  // founder's Mac the repository path did not exist and the fit was silently skipped, "speed: as filmed").
+  const { estimateTake } = await import("./clock.mjs").catch(() => import("../skill/scripts/clock.mjs"));
   const sb = JSON.parse(fs.readFileSync(path.join(dir, "storyboard.json"), "utf8"));
   const planned = estimateTake(sb.steps);
   const filmed = lastStepEnd > r0 ? lastStepEnd - r0 + TAIL_BEAT_S : 0;

@@ -2,6 +2,10 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.30.2 — 2026-10-18
+
+- THE FIT WORKS WHERE IT IS INSTALLED. trim.mjs imported the camera's clock at `../skill/scripts/clock.mjs`, the repository's layout; the installed skill flattens `skill/scripts` and `scripts` into one `scripts` folder, so on a real machine the import failed and the fit to the plan was silently skipped ("speed: as filmed (Cannot find module …)" on the founder's take of 09:16). The clock is now looked up beside trim.mjs first, then in the repository layout. Second lesson of the day: a release is tested on the installed layout, not in the checkout.
+
 ## 1.30.1 — 2026-10-18
 
 - A SUMMARY NEVER FAILS A TAKE. The founder's first take through the new chain (job 51700497061f41e07cde9290, nine steps, 62 s on film) filmed to the end and died at "Camera off": the 1.29.0 timing summary read `manifest.camera`, a key that never existed (the glides live on `manifest.shots`), and the whole take was thrown away with "Filming did not finish". The summary now reads the shots and runs in its own try after filming; whatever it hits, the take is saved and delivered. 1.29.0's glide loop was tested in isolation, never on a full take; this is the lesson.
