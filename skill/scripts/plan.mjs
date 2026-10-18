@@ -218,7 +218,7 @@ const firstMessage = async () => {
     // storyboard is the base; the note says what to keep an eye on; the probe finds what moved.
     job.retake_of && job.storyboard
       ? `## This is a retake\nThe person wants the same demo filmed again, the same length and the same shots, because the app changed since. Their note: "${(job.retake_note || "no note").replace(/"/g, "'")}". ${job.storyboard.storyboard ? "Start from the previous storyboard below: keep its steps and its lines; probe it; fix only what no longer resolves or what the note names; then submit_storyboard. Never explore when the probe passes." : "Only the previous storyboard's lines survive (below): rebuild the same steps with the same lines, find the controls again, probe, then submit_storyboard."}\n\n## The previous storyboard\n${JSON.stringify(job.storyboard.storyboard ?? job.storyboard.steps ?? job.storyboard)}`
-      : codeOn ? `Write the storyboard, probe it, fix it, probe again, then submit_storyboard.` : `There is no code: explore first (explore from the starting address, looking_for = the brief's nouns), then write the storyboard, probe it, fix it, probe again, then submit_storyboard.`,
+      : codeOn ? `Write the storyboard from the page's own words, probe it, fix it, probe again, then submit_storyboard. Read a file only when the page's words do not name a control you need; never as a first move. You have at most 4 dry runs and 3 minutes from the first one; after that, hand in what passed and name in 'unsure' what you could not find.` : `There is no code: explore first (explore from the starting address, looking_for = the brief's nouns), then write the storyboard, probe it, fix it, probe again, then submit_storyboard. You have at most 4 dry runs and 3 minutes from the first one; after that, hand in what passed and name in 'unsure' what you could not find.`,
   ];
   return parts.join("\n\n");
 };
@@ -226,6 +226,16 @@ const firstMessage = async () => {
 let storyboard = null;
 let creates = "";
 const messages = [{ role: "user", content: [{ type: "text", text: await firstMessage() }] }];
+// THE PLANNING CAP (founder 2026-10-18, a 13-minute storyboard: "inconceivable"): the planner gets FOUR dry runs, or
+// three minutes from the first one, whichever comes first. After that no probe runs; the next move is the storyboard
+// as it stands, with the steps it could not find named in `unsure`, so the person answers the question instead of
+// waiting while it rewrites and retries (that job: 18 dry runs, 13 model turns).
+const CAP_PROBES = 4;
+const CAP_MS = 3 * 60 * 1000;
+let probes = 0;
+let firstProbeAt = 0;
+const capped = () => probes >= CAP_PROBES || (firstProbeAt && Date.now() - firstProbeAt > CAP_MS);
+const CAP_TEXT = () => `PLANNING CAP REACHED (${probes} dry run${probes === 1 ? "" : "s"}, ${Math.round((Date.now() - (firstProbeAt || Date.now())) / 1000)} s since the first). No more dry runs, no more reading. Hand in the storyboard NOW with submit_storyboard: keep every step that passed; a step that failed becomes a hover or a settle on the nearest element the page does have, or goes; write ONE short sentence in \`unsure\` naming what you could not find on the page (the step and the control), so the person can tell you where it is. The person is waiting.`;
 const plan = async () => {
   say("Writing the storyboard…");
   storyboard = null;
@@ -255,12 +265,20 @@ const plan = async () => {
         else if (u.name === "harvest_words") { say(`Reading the app's own words on ${(input.urls || []).length} page${(input.urls || []).length === 1 ? "" : "s"}…`); out = harvest(input.urls); }
         else if (u.name === "explore") { say(`Walking the app from ${where(input.from)}, looking for ${String(input.looking_for || "the brief's words").slice(0, 60)}…`); out = explore(input.from, input.looking_for, input.depth); }
         else if (u.name === "screenshot") { say(`Looking at ${where(input.url)}…`); out = screenshot(input.url); }
-        else if (u.name === "probe") { say(`Dry run of the storyboard, ${(input.storyboard?.steps || []).length} steps…`); out = probe(input.storyboard); }
+        else if (u.name === "probe") {
+          if (capped()) out = CAP_TEXT();
+          else {
+            probes += 1; if (!firstProbeAt) firstProbeAt = Date.now();
+            say(`Dry run of the storyboard, ${(input.storyboard?.steps || []).length} steps… (${probes} of ${CAP_PROBES})`);
+            out = probe(input.storyboard);
+            if (capped()) out += `\n\n${CAP_TEXT()}`;
+          }
+        }
         else if (u.name === "submit_storyboard") {
           say("Handing in the storyboard…");
           const bad = validate(input.storyboard);
           if (bad) out = `Not accepted: ${bad}`;
-          else { storyboard = input.storyboard; creates = typeof input.creates === "string" ? input.creates : ""; out = "Accepted."; }
+          else { storyboard = input.storyboard; creates = typeof input.creates === "string" ? input.creates : ""; if (typeof input.unsure === "string" && input.unsure.trim()) storyboard.unsure = input.unsure.trim().slice(0, 240); out = "Accepted."; }
         } else out = `Unknown tool ${u.name}`;
       } catch (e) { out = `Tool failed: ${e.message}`; }
       results.push({ type: "tool_result", tool_use_id: u.id, content: typeof out === "string" ? [{ type: "text", text: out }] : out });
@@ -311,7 +329,7 @@ const step = async (name, args, what) => {
   console.log(`  ${new Date(t0).toISOString()} ${what}…`);
   const r = spawnSync("node", [script(name), ...args], { cwd: process.cwd(), stdio: "inherit", env: process.env });
   console.log(`  ${new Date().toISOString()} ${what}: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  if (r.status !== 0) { console.error(`  ! ${name} failed (exit ${r.status})`); await postEvent("failed", { message: `${what} did not finish` }); process.exit(1); }
+  if (r.status !== 0) { console.error(`  ! ${name} failed (exit ${r.status})`); if (r.status !== 3) await postEvent("failed", { message: `${what} did not finish` }); process.exit(1); }
 };
 const sb = JSON.parse(fs.readFileSync(sbFile, "utf8"));
 if (Array.isArray(sb.prep) && sb.prep.length) await step("cleanup.mjs", [dir, "--prep"], "Preparing the data");
