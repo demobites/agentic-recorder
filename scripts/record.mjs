@@ -599,11 +599,13 @@ async function visibleTarget(selector, minY = 0, timeout = 15000) {
     // third and re-scan — instead of failing the whole take. Bounded so a
     // genuinely-unreachable target still ends the loop. This is the camera
     // following the subject, not a camera-path change.
+    // THE SCROLL LAW (founder's take of 2026-10-18 jumped instead of scrolling): the correction GLIDES, never
+    // jumps — the same eased scroll a `scroll` step gets, ~800 ms, toward the target at 40% of the viewport.
+    // scrollIntoViewIfNeeded + an instant scrollBy was a cut in the middle of a take.
     if (offVerticalEl && scrollCorrections < 3) {
       scrollCorrections++;
-      await offVerticalEl.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
-      await page.evaluate(() => window.scrollBy(0, -Math.round(window.innerHeight * 0.28))).catch(() => {});
-      await page.waitForTimeout(450);
+      await glideIntoView(offVerticalEl, 800);
+      await page.waitForTimeout(300);
       continue;
     }
     await page.waitForTimeout(500);
@@ -762,6 +764,36 @@ async function glide(x, y) {
   cx = x; cy = y;
   pushMouse("move", x, y);
   await page.mouse.move(x, y).catch(() => {});
+}
+
+/** Ease the page (or the target's own scrolling panel) so the element lands at 40% of the viewport. The same
+ *  easing as smoothScroll, so a camera correction looks exactly like an authored scroll step. */
+async function glideIntoView(el, ms = 800) {
+  await el.evaluate((node, m) => new Promise((res) => {
+    const scrolls = (n) => {
+      if (!n || n === document.body || n === document.documentElement) return false;
+      const cs = getComputedStyle(n);
+      return /(auto|scroll|overlay)/.test(cs.overflowY) && n.scrollHeight > n.clientHeight + 40;
+    };
+    let panel = null;
+    for (let p = node.parentElement; p; p = p.parentElement) { if (scrolls(p)) { panel = p; break; } }
+    const r = node.getBoundingClientRect();
+    const h = panel ? panel.clientHeight : window.innerHeight;
+    const topInView = panel ? r.top - panel.getBoundingClientRect().top : r.top;
+    const d = Math.round(topInView - h * 0.4);
+    if (Math.abs(d) < 2) return res();
+    const y0 = panel ? panel.scrollTop : window.scrollY;
+    const t0 = performance.now();
+    const done = setTimeout(res, m + 500); // never hang the take on a tab that stops painting
+    const step = (now) => {
+      const e = Math.min(1, (now - t0) / m);
+      const ease = e < 0.5 ? 2 * e * e : 1 - Math.pow(-2 * e + 2, 2) / 2;
+      if (panel) panel.scrollTo(0, y0 + d * ease);
+      else window.scrollTo(0, y0 + d * ease);
+      if (e < 1) requestAnimationFrame(step); else { clearTimeout(done); res(); }
+    };
+    requestAnimationFrame(step);
+  }), ms).catch(() => {});
 }
 
 async function smoothScroll(dy, ms = 1400, within = null) {

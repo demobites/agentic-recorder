@@ -8,6 +8,13 @@
 // report lists the visible controls on that page so the planner can pick the
 // real one, and the run stops there.
 //
+// THE SCROLL LAW (founder's take of 2026-10-18 jumped instead of scrolling):
+// every target reports its geometry back, the element's top and bottom in the
+// viewport at the moment of the probe and the viewport's height, so the
+// planner (plan.mjs) knows which targets sit below the fold and puts a scroll
+// step before each of them. The last line of stdout is machine-readable:
+//   RESULT { passed, viewport, steps: [{ step, action, selector, top, bottom, viewport, url }] }
+//
 //   node scripts/probe.mjs <storyboard.json>
 import fs from "node:fs";
 import path from "node:path";
@@ -33,6 +40,9 @@ const ms = (v, d) => (typeof v !== "number" ? d : v < 60 ? v * 1000 : v);
 const lines = [];
 const out = (t) => { lines.push(t); console.log(t); };
 let failed = false;
+const VIEWPORT = launchOpts.viewport.height;
+const FOLD_MARGIN = 120;
+const geometry = [];
 
 const visible = async (selector, minY) => {
   const loc = page.locator(selector);
@@ -42,11 +52,19 @@ const visible = async (selector, minY) => {
     for (let i = 0; i < Math.min(n, 12); i++) {
       const el = loc.nth(i);
       const box = await el.boundingBox().catch(() => null);
-      if (box && box.width > 0 && box.height > 0 && box.y >= (minY || 0)) return el;
+      if (box && box.width > 0 && box.height > 0 && box.y >= (minY || 0)) return { el, box };
     }
     await page.waitForTimeout(250);
   }
   return null;
+};
+/** Where the target sat when the probe reached it: top and bottom in the viewport, and the viewport's height. */
+const place = (n, s, box) => {
+  const top = Math.round(box.y), bottom = Math.round(box.y + box.height);
+  const g = { step: n, action: s.action, selector: s.selector, top, bottom, viewport: VIEWPORT, url: page.url() };
+  geometry.push(g);
+  const where = bottom > VIEWPORT - FOLD_MARGIN ? " — BELOW THE FOLD: a scroll step goes before it" : top < 0 ? " — ABOVE THE VIEWPORT: a scroll step goes before it" : "";
+  return ` (top ${top}, bottom ${bottom} of ${VIEWPORT})${where}`;
 };
 const controls = async () => page.evaluate(() => {
   const vis = (el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none"; };
@@ -86,7 +104,9 @@ for (const [i, s] of steps.entries()) {
       await page.waitForTimeout(600);
       out(`step ${n} scroll ${s.dy}: ok`);
     } else if (s.action === "click" || s.action === "hover" || s.action === "expect" || s.action === "type") {
-      const el = await visible(s.selector, s.minY);
+      const hit = await visible(s.selector, s.minY);
+      const el = hit?.el ?? null;
+      const geo = hit ? place(n, s, hit.box) : "";
       if (!el) {
         out(`step ${n} ${s.action} ${JSON.stringify(s.selector)}: NOT FOUND on ${page.url()}`);
         out(`  visible controls here:\n    ${(await controls()).join("\n    ")}`);
@@ -101,17 +121,17 @@ for (const [i, s] of steps.entries()) {
         if (s.waitLoad) await page.waitForLoadState("load").catch(() => {});
         let revealed = "";
         if (typeof s.reveals === "string" && s.reveals) revealed = (await visible(s.reveals, 0)) ? `, reveals ${JSON.stringify(s.reveals)} seen` : `, reveals ${JSON.stringify(s.reveals)} NOT SEEN`;
-        out(`step ${n} click ${JSON.stringify(s.selector)}: ok${revealed} — now at ${page.url()}`);
+        out(`step ${n} click ${JSON.stringify(s.selector)}: ok${geo}${revealed} — now at ${page.url()}`);
       } else if (s.action === "type") {
         if (s.clear) await el.fill("");
         await el.click({ timeout: 8000 }).catch(() => {});
         await el.type(String(s.text), { delay: 10 });
         if (s.enter) { await page.keyboard.press("Enter"); await page.waitForTimeout(Math.min(ms(s.after, 1500), 4000)); }
-        out(`step ${n} type into ${JSON.stringify(s.selector)}: ok — now at ${page.url()}`);
+        out(`step ${n} type into ${JSON.stringify(s.selector)}: ok${geo} — now at ${page.url()}`);
       } else {
         await el.hover().catch(() => {});
         await page.waitForTimeout(400);
-        out(`step ${n} ${s.action === "click" ? "pointed at" : s.action} ${JSON.stringify(s.selector)}: ok`);
+        out(`step ${n} ${s.action === "click" ? "pointed at" : s.action} ${JSON.stringify(s.selector)}: ok${geo}`);
       }
     } else {
       out(`step ${n}: unknown action ${JSON.stringify(s.action)}`);
@@ -126,5 +146,6 @@ for (const [i, s] of steps.entries()) {
   }
 }
 out(failed ? "PROBE FAILED: fix the steps above and probe again." : `PROBE PASSED: ${steps.length} steps resolved.`);
+console.log("RESULT " + JSON.stringify({ passed: !failed, viewport: VIEWPORT, steps: geometry }));
 await ctx.close();
 process.exit(failed ? 1 : 0);
