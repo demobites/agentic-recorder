@@ -49,6 +49,10 @@ if (!url) { console.error("Usage: node scripts/signin.mjs <login url> [--timeout
 const probe = argv.includes("--probe");
 // --fresh: sign in as a different user — the site's cookies in THIS profile go first, so the wall shows.
 const fresh = argv.includes("--fresh");
+// --persona (1.41.0): the person asked for a sign-in on purpose (a persona from the app). A public page with no wall is
+// NOT a sign-in then (resend.com's home declared three personas "signed in" in 13 s, nobody signed in): the window
+// waits until they went through a wall and came out on the far side, or they close it.
+const persona = argv.includes("--persona");
 const timeoutMs = Number(argv[argv.indexOf("--timeout") + 1]) || 10 * 60 * 1000;
 const profileDir = process.env.RECORDER_PROFILE || path.resolve(process.cwd(), ".recorder", "profile");
 
@@ -177,7 +181,8 @@ const remember = (origin, who) => { try { const l = readLedger(); l.origins = { 
 await page.waitForTimeout(4000).catch(() => {});
 if (closedByHand || page.isClosed()) closedExit("closed");
 const first = await wallCheck();
-if (!first.wall) {
+if (!first.wall && persona) console.log(`· ${new URL(page.url()).origin} shows no sign-in wall on this page. Go to its Log in in the Chrome window and sign in; the window waits.`);
+if (!first.wall && !persona) {
   const origin = new URL(page.url()).origin;
   console.log(`✓ No sign-in needed for ${origin}.`);
   const who = await whoAmI();
@@ -190,6 +195,10 @@ console.log("⏳ Waiting for you — sign in in the Chrome window that just open
 await postEvent("signin_wait", { url });
 const started = Date.now();
 let lastCheck = "none";
+// THE WALL MUST BE SEEN FIRST (persona mode): a login path, an identity provider, or a password field; signed in =
+// out the far side of it onto a page that is neither.
+let sawWall = first.wall;
+let wallPath = first.wall ? new URL(page.url()).pathname : null;
 while (Date.now() - started < timeoutMs) {
   if (closedByHand || page.isClosed()) closedExit("closed");
   try {
@@ -197,7 +206,13 @@ while (Date.now() - started < timeoutMs) {
     let here;
     try { here = new URL(page.url()); } catch { continue; }
     await noteChooser(here);
-    if (here.pathname !== startPath && !/sign-?in|log-?in|auth|sso|oauth|callback/i.test(here.pathname) && !/accounts\.google\.com|login\.microsoftonline\.com|okta\.com|auth0\.com/i.test(here.host)) {
+    const loginish = /sign-?in|log-?in|auth|sso|oauth|callback/i.test(here.pathname) || /accounts\.google\.com|login\.microsoftonline\.com|okta\.com|auth0\.com/i.test(here.host);
+    if (loginish) { sawWall = true; wallPath = here.pathname; }
+    else if (persona && !sawWall) { const pw = await page.evaluate(() => !!document.querySelector('input[type="password"]')).catch(() => false); if (pw) { sawWall = true; wallPath = here.pathname; } }
+    const landed = persona
+      ? sawWall && !loginish && here.pathname !== wallPath && (here.pathname !== startPath || !!(await whoAmI()))
+      : here.pathname !== startPath && !loginish;
+    if (landed) {
       const who = await whoAmI();
       console.log(`✓ Signed in${who ? ` as ${who}` : ""}. The session is saved for ${here.origin}; next time there is no question and no window.`);
       await postEvent("signed_in", { origin: here.origin, ...(who ? { who } : {}) });
