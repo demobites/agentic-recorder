@@ -2,6 +2,10 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.38.0 — 2026-10-18
+
+- THE STILLS ARE DRAWN ON THE RECORDER (founder: "at that point you have a browser… load fabric… create the two images"). After the demo is built and before the recorder says "ready", its own Chrome opens the app's internal still page — the studio's own render code, the design's fonts from the web — for the intro and the backdrop, and hands the PNGs to the app (stills.mjs, from stage-wait). The app remembers them and the export draws nothing: thirty seconds of sandbox gone from every take. Never fatal: a miss leaves the export to draw them as before.
+
 ## 1.37.0 — 2026-10-18
 
 - ONE QUESTION, EVER (founder: "at most one clarification… then go"). The planner may ask the person once; after their answer it works with what it has and hands in the storyboard, naming what it could not find in `unsure`. A second question three seconds after one dry run had left him stuck in a loop.
