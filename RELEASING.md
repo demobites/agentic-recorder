@@ -2,6 +2,10 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.30.1 — 2026-10-18
+
+- A SUMMARY NEVER FAILS A TAKE. The founder's first take through the new chain (job 51700497061f41e07cde9290, nine steps, 62 s on film) filmed to the end and died at "Camera off": the 1.29.0 timing summary read `manifest.camera`, a key that never existed (the glides live on `manifest.shots`), and the whole take was thrown away with "Filming did not finish". The summary now reads the shots and runs in its own try after filming; whatever it hits, the take is saved and delivered. 1.29.0's glide loop was tested in isolation, never on a full take; this is the lesson.
+
 ## 1.30.0 — 2026-10-18
 
 - THE TAKE FITS ITS PLAN (founder: "it's no shame to run it via ffmpeg and make it 1.4 times faster… planned 30, took 46 — make it 33 or 34"). When the filmed story runs more than a few percent past the storyboard's clock (+10 % of air), trim speeds the whole take up by one factor, 1.5 at most, and the timebase carries it (`a = 1/speed`, `b = -record_from/speed`, `manifest.speed`): steps, cursor and shots all map through it, nothing drifts. "Fitting the take to its plan (1.37x)…" is said in the chat. A take within its plan is untouched.
