@@ -658,7 +658,7 @@ if (arg === "listen") {
     const heartbeat = setInterval(() => { void api({ action: "checkin", machine_id: listen.machine_id, name, readiness: readiness(), busy: true }); }, 5000);
     const { spawn } = await import("node:child_process");
     const made = [];
-    const child = spawn(process.execPath, [script, job.url, ...(job.fresh && !isLook && !isOut ? ["--fresh"] : [])], { cwd: process.cwd(), env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1", ...profileFor(job, made) }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+    const child = spawn(process.execPath, [script, job.url, ...(job.fresh && !isLook && !isOut ? ["--fresh"] : []), ...(!isLook && !isOut ? ["--persona"] : [])], { cwd: process.cwd(), env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_LISTEN: "1", ...profileFor(job, made) }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     track(child);
     let verdict = null;
     let buf = "";
