@@ -2,6 +2,10 @@
 
 One package, three names, one version. `demobite`, `agentic-recorder` and `demobites` on npm are the same full package (launcher, skill, recorder, scripts), published together at the same version, every release. There are no alias packages and no dependency ranges between the names, so nothing can lag or strand.
 
+## 1.33.0 — 2026-10-18
+
+- THE PERSON LEADS (founder: "if the planner gets stuck, he should put the customer into discussion… I wouldn't go more than 2 minutes"). The planner has a new tool, ask_person: one short question goes to the chat as a `question` event, the job waits (`waiting_answer`), and the person's words come back as the tool's result; then the dry-run counters start again. The cap is now three dry runs or two minutes from the first, and what it buys is the question, not a guessed storyboard; a second cap after an answer hands in the storyboard with `unsure`.
+
 ## 1.32.0 — 2026-10-18
 
 - THE PLANNING CAP (founder, a 13-minute storyboard: "inconceivable"; that job ran 18 dry runs over 13 model turns). The planner gets four dry runs, or three minutes from the first, whichever comes first; after that no probe runs and the next move is the storyboard as it stands, with what it could not find named in `unsure` (a new field of submit_storyboard, shown in the chat and asked about). Code is read only when the page's own words do not name a control, never as a first move.
