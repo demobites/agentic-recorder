@@ -148,13 +148,57 @@ const explore = (from, lookingFor, depth) => {
   for (const sc of res.screens.slice(0, 3)) if (sc.shot && fs.existsSync(sc.shot)) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: fs.readFileSync(sc.shot).toString("base64") } });
   return content;
 };
+// THE SCROLL LAW (founder's take of 2026-10-18 jumped instead of scrolling): the dry run reports where every
+// click/hover/type target sat in the viewport (probe.mjs, the RESULT line). The geometry is kept with the camera
+// steps it was measured on; when the planner hands in that same storyboard, a scroll step is placed before every
+// target that sat below the fold (bottom > viewport − 120) or above it (top < 0), dy = top − 40% of the viewport,
+// 900 ms, so the camera glides there instead of the correction jumping it into frame.
+const FOLD_MARGIN = 120;
+const FOLD_AT = 0.4;
+let lastProbe = null; // { key, geometry: { steps: [...] } }
+const cameraKey = (sb) => (sb?.steps || []).map((s) => [s.action, s.url || "", s.selector || "", typeof s.dy === "number" ? s.dy : ""].join("|")).join("\n");
 const probe = (sb) => {
   if (!sb || !Array.isArray(sb.steps)) return "storyboard with steps[] required";
   const file = path.join(dir, "probe.json");
   fs.writeFileSync(file, JSON.stringify(sb, null, 2) + "\n");
   const r = run("probe.mjs", [file]);
-  const out = `${r.stdout || ""}${r.stderr ? `\n${r.stderr}` : ""}`.trim();
+  const all = (r.stdout || "").split("\n");
+  const last = all.filter((l) => l.startsWith("RESULT ")).pop();
+  let geometry = null; try { geometry = JSON.parse(last.slice(7)); } catch { /* an older probe, or it died */ }
+  lastProbe = geometry ? { key: cameraKey(sb), geometry } : null;
+  const text = all.filter((l) => !l.startsWith("RESULT ")).join("\n");
+  let out = `${text}${r.stderr ? `\n${r.stderr}` : ""}`.trim();
+  const below = foldScrolls(sb, geometry, true);
+  if (below.length) out += `\n\nBelow the fold: ${below.map((b) => `step ${b.step} (${b.selector}, top ${b.top} of ${b.viewport})`).join("; ")}. When you hand in this storyboard unchanged, a scroll step (dy ${below.map((b) => b.dy).join(", ")}, 900 ms) is placed before each of them for you; or add your own and probe again.`;
   return out.length > 12000 ? out.slice(0, 12000) + "\n… (cut)" : out || "(no report)";
+};
+/** The scroll steps the geometry asks for. dryRun = true only lists them; otherwise they are spliced into sb.steps. */
+const foldScrolls = (sb, geometry, dryRun = false) => {
+  const found = [];
+  if (!geometry || !Array.isArray(geometry.steps) || !Array.isArray(sb?.steps)) return found;
+  const byStep = new Map(geometry.steps.map((g) => [g.step, g]));
+  const steps = sb.steps;
+  let offset = 0; // what the inserted scrolls have already moved the page by, on the same screen
+  let lastUrl = null;
+  const outSteps = [];
+  for (const [i, s] of steps.entries()) {
+    const g = byStep.get(i + 1);
+    if (s.action === "goto") { offset = 0; lastUrl = null; }
+    if (g) {
+      if (lastUrl !== null && g.url !== lastUrl) offset = 0; // the probe navigated between the two targets
+      lastUrl = g.url;
+      const top = g.top - offset, bottom = g.bottom - offset;
+      if (bottom > g.viewport - FOLD_MARGIN || top < 0) {
+        const dy = Math.round(top - g.viewport * FOLD_AT);
+        found.push({ step: i + 1, selector: g.selector, top: g.top, viewport: g.viewport, dy });
+        if (!dryRun) outSteps.push({ action: "scroll", dy, ms: 900, frame: "wide", label: `bring ${String(g.selector).slice(0, 50)} into view`, inserted: "fold" });
+        offset += dy;
+      }
+    }
+    outSteps.push(s);
+  }
+  if (!dryRun && found.length) sb.steps = outSteps;
+  return found;
 };
 const ACTIONS = new Set(["goto", "settle", "scroll", "click", "hover", "type", "expect"]);
 const validate = (sb) => {
@@ -169,11 +213,11 @@ const validate = (sb) => {
     if (s.action === "scroll" && typeof s.dy !== "number") return `${at}: scroll needs numeric dy`;
     if (s.frame !== undefined && s.frame !== "close" && s.frame !== "wide") return `${at}: frame must be close or wide`;
   }
-  if (sb.steps.length > 14) return "more than 14 steps; 6 to 10 is the law";
+  if (sb.steps.length > 14) return "more than 14 steps; 5 to 8 is the law";
   // THE CAMERA'S CLOCK (founder 2026-10-15): the take may not run past 45 s. The estimate is the
   // camera's own (clock.mjs); the model gets the number and the cure.
   const est = estimateTake(sb.steps);
-  if (est > 45) return `the camera would run this take about ${Math.round(est)} s; the law is 30 to 45. Cut words (6 to 11 a line) or steps (5 to 8 narrated); never pad, never add.`;
+  if (est > 45) return `the camera would run this take about ${Math.round(est)} s; the law is 30 to 45. Cut words or steps: one line per idea, 3 to 6 narrated lines, no floor on a line, silence on the clicks; never pad, never add.`;
   return null;
 };
 
@@ -304,13 +348,18 @@ const plan = async () => {
           if (capped()) out = CAP_TEXT();
           else {
             probes += 1; if (!firstProbeAt) firstProbeAt = Date.now();
-            say(`Dry run of the storyboard, ${(input.storyboard?.steps || []).length} steps… (${probes} of ${CAP_PROBES})`);
+            say(`Walking the storyboard, ${(input.storyboard?.steps || []).length} steps…`);
             out = probe(input.storyboard);
             if (capped()) out += `\n\n${CAP_TEXT()}`;
           }
         }
         else if (u.name === "submit_storyboard") {
           say("Handing in the storyboard…");
+          // The fold scrolls go in before the clock is read, so the estimate is the take the camera will run.
+          if (lastProbe && input.storyboard && lastProbe.key === cameraKey(input.storyboard)) {
+            const added = foldScrolls(input.storyboard, lastProbe.geometry);
+            if (added.length) console.log(`  Scroll steps placed before ${added.map((a) => `step ${a.step}`).join(", ")} (below the fold in the dry run).`);
+          }
           const bad = validate(input.storyboard);
           if (bad) out = `Not accepted: ${bad}`;
           else { storyboard = input.storyboard; creates = typeof input.creates === "string" ? input.creates : ""; if (typeof input.unsure === "string" && input.unsure.trim()) storyboard.unsure = input.unsure.trim().slice(0, 240); out = "Accepted."; }
