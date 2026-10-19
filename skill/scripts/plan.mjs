@@ -56,7 +56,7 @@ const startUrl = job.url || cfg.url || null;
 if (startUrl) await ensureSignin(startUrl);
 
 // ── What the planner works from ──────────────────────────────────────────
-say("Reading the workspace rules…");
+say("Reading your rules…");
 run("rules.mjs", [dir]);
 const rules = (() => { try { return JSON.parse(fs.readFileSync(path.resolve(".recorder", "rules.json"), "utf8")); } catch { return { version: 0, lines: [] }; } })();
 
@@ -298,7 +298,7 @@ const askPerson = async (text) => {
   // after one dry run left him stuck): once answered, the planner works with what it has and hands in the
   // storyboard, naming what it could not find in `unsure`. The person fixes it from the storyboard, not from a loop.
   if (asked >= 1) return "You asked once and they answered. No more questions: hand in the storyboard NOW with submit_storyboard — keep every step that passed, turn a step you could not place into a hover or a settle on the nearest element the page has, and name what you could not find in `unsure`.";
-  say("Asking you in the chat…");
+  say("Waiting for your answer.");
   if (!listening) return "(no chat here: decide yourself and hand in the storyboard)";
   await postEvent("question", { text: q });
   const started = Date.now();
@@ -338,23 +338,23 @@ const plan = async () => {
       let out;
       try {
         const where = (u) => { try { const x = new URL(u); return (x.pathname === "/" ? x.host : x.pathname).slice(0, 60); } catch { return String(u || "").slice(0, 60); } };
-        if (u.name === "list_files") { say(ghRepo ? `Listing the files of ${ghRepo} on GitHub…` : "Listing the project's files…"); out = await listFiles(); }
+        if (u.name === "list_files") { say(ghRepo ? `Looking through the code of ${ghRepo}…` : "Looking through the project's code…"); out = await listFiles(); }
         else if (u.name === "read_file") { say(`Reading ${String(input.path || "").slice(0, 80)}${ghRepo ? " on GitHub" : ""}…`); out = await readFile(input.path); }
-        else if (u.name === "harvest_words") { say(`Reading the app's own words on ${(input.urls || []).length} page${(input.urls || []).length === 1 ? "" : "s"}…`); out = harvest(input.urls); }
-        else if (u.name === "explore") { say(`Walking the app from ${where(input.from)}, looking for ${String(input.looking_for || "the brief's words").slice(0, 60)}…`); out = explore(input.from, input.looking_for, input.depth); }
+        else if (u.name === "harvest_words") { say(`Learning the app's own names on ${(input.urls || []).length} page${(input.urls || []).length === 1 ? "" : "s"}, so the voice uses them…`); out = harvest(input.urls); }
+        else if (u.name === "explore") { say(`Finding ${String(input.looking_for || "the brief's words").slice(0, 60)} in the app, from ${where(input.from)}…`); out = explore(input.from, input.looking_for, input.depth); }
         else if (u.name === "screenshot") { say(`Looking at ${where(input.url)}…`); out = screenshot(input.url); }
         else if (u.name === "ask_person") { out = await askPerson(input.question); }
         else if (u.name === "probe") {
           if (capped()) out = CAP_TEXT();
           else {
             probes += 1; if (!firstProbeAt) firstProbeAt = Date.now();
-            say(`Walking the storyboard, ${(input.storyboard?.steps || []).length} steps…`);
+            say(`Trying the storyboard on the app, ${(input.storyboard?.steps || []).length} steps…`);
             out = probe(input.storyboard);
             if (capped()) out += `\n\n${CAP_TEXT()}`;
           }
         }
         else if (u.name === "submit_storyboard") {
-          say("Handing in the storyboard…");
+          say("Handing you the storyboard…");
           // The fold scrolls go in before the clock is read, so the estimate is the take the camera will run.
           if (lastProbe && input.storyboard && lastProbe.key === cameraKey(input.storyboard)) {
             const added = foldScrolls(input.storyboard, lastProbe.geometry);
@@ -391,7 +391,7 @@ try {
     if (answer === "cancelled" || w.status === 2) { console.log("  The person cancelled."); process.exit(0); }
     if (answer.startsWith("change:")) {
       const note = answer.slice(7).trim();
-      say("Changing the storyboard…");
+      say("Changing the storyboard with your note…");
       messages.push({ role: "user", content: [{ type: "text", text: `The person asked for a change: "${note}". Revise the storyboard, probe it, and submit_storyboard again.` }] });
       continue;
     }
