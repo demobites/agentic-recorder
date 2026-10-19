@@ -24,7 +24,7 @@ try {
   state = { cookies, origins: [{ origin, localStorage }] };
 } finally { await ctx.close(); }
 if (!state.cookies.length && !state.origins[0].localStorage.length) { console.error(`no session at ${origin} in this profile`); process.exit(3); }
-const res = await fetch(`${base}/api/recorder/session`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.api_key}` }, body: JSON.stringify({ url: origin, state, label: "From my machine" }) });
+const res = await fetch(`${base}/api/recorder/session`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.api_key}` }, body: JSON.stringify({ url: origin, state, persona: process.env.RECORDER_PERSONA || "default", label: "From my machine" }) });
 const d = await res.json().catch(() => ({}));
 if (!res.ok) { console.error(`the vault refused: ${d.error ?? res.status}`); process.exit(1); }
 console.log(`RESULT ${JSON.stringify({ cookies: d.cookies ?? state.cookies.length, origins: d.origins ?? 1, profile_id: d.profile_id ?? null })}`);
