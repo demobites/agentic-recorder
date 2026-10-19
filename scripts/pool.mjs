@@ -105,10 +105,43 @@ let draining = false;
 let reclaimed = false;
 const shred = (p) => { try { fs.rmSync(p, { recursive: true, force: true }); } catch { /* best effort */ } };
 
+// THE LOOK FROM THE CLOUD (founder 2026-10-19: the start page is opened behind the scenes the moment it is pasted,
+// machine or no machine): look.mjs as a stranger, its lines posted live, its verdict as the job's result — exactly
+// what the laptop's listener does for a look.
+const runLook = async (claim, jobApi) => {
+  const job = claim.job;
+  const t0 = Date.now();
+  console.log(`\n  ◉ ${stamp()} look ${job.id}: ${job.url}`);
+  await jobApi({ action: "event", kind: "started", payload: { machine: name, cloud: true } });
+  const child = spawn(process.execPath, [path.join(HERE, "look.mjs"), job.url], { cwd: HOME, env: { ...process.env, RECORDER_JOB: job.id, RECORDER_BASE: base, RECORDER_POOL: instanceId }, stdio: ["ignore", "pipe", "pipe"] });
+  running.set(job.id, child);
+  let verdict = null;
+  let buf = "";
+  child.stdout.on("data", (d) => {
+    buf += d.toString();
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line) continue;
+      if (line.startsWith("RESULT ")) { try { verdict = JSON.parse(line.slice(7)); } catch { verdict = null; } continue; }
+      console.log(`  · ${line}`);
+      void jobApi({ action: "event", kind: "look", payload: { text: line.slice(0, 200) } });
+    }
+  });
+  child.stderr.on("data", (d) => { const t = d.toString().trim(); if (t) console.log(`  ! ${t.split("\n")[0].slice(0, 160)}`); });
+  await new Promise((r) => child.on("close", r));
+  running.delete(job.id);
+  if (verdict) await jobApi({ action: "event", kind: "looked", payload: verdict });
+  else await jobApi({ action: "event", kind: "failed", payload: { message: "The look did not finish" } });
+  console.log(`  ■ ${stamp()} look ${job.id} ${verdict?.access ?? "failed"} in ${Math.round((Date.now() - t0) / 1000)} s`);
+  await api({ action: "checkin", busy: [...running.keys()], draining });
+};
+
 const runJob = async (claim) => {
   const job = claim.job;
   // The take's own door, with the job's cloud key (what a laptop's listener does with its own key).
   const jobApi = async (body) => { try { const r = await fetch(`${base}/api/recorder/listen`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${claim.key}` }, body: JSON.stringify({ job_id: job.id, ...body }), signal: AbortSignal.timeout(20000) }); return r.ok ? await r.json() : null; } catch { return null; } };
+  if (job.kind === "look") { await runLook(claim, jobApi); return; }
   const dir = path.join(HOME, job.id);
   const rec = path.join(dir, ".recorder");
   const profile = path.join(dir, "profile");
