@@ -732,7 +732,8 @@ if (arg === "listen") {
   const runVault = async (job) => {
     noteState({ busy: true, job: job.id });
     await event(job.id, "started", { machine: name });
-    const env = { ...process.env, RECORDER_BASE: base, ...profileFor(job) };
+    // THE PERSONA KEY RIDES ALONG (1.44.0, founder 2026-10-19: the vault mirrors the machine per persona): "p<id>" or "default".
+    const env = { ...process.env, RECORDER_BASE: base, RECORDER_PERSONA: job.profile || "default", ...profileFor(job) };
     const r = spawnSync(process.execPath, [path.join(dest, "scripts", "export-session.mjs"), env.RECORDER_PROFILE || path.join(process.cwd(), ".recorder", "profile"), job.url], { cwd: process.cwd(), encoding: "utf8", env });
     const line = (r.stdout || "").trim().split("\n").filter((l) => l.startsWith("RESULT ")).pop();
     let out = null; try { out = JSON.parse(line.slice(7)); } catch { /* none */ }
