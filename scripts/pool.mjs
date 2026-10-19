@@ -14,7 +14,10 @@
 //   · THE PLACEMENT is the server's: the box asks for work while under its limit (twice comfortable) and the server
 //     says whether it may take one now.
 //   · THE TWO-MINUTE NOTICE: the box watches the metadata service for the spot reclaim and tells the server at once;
-//     no new take from then on, the running ones finish if they can.
+//     no new take from then on. A take still in its dry run is handed back to the queue at once (the next box has the
+//     minutes); a take filming or saving finishes here (it fits in two minutes). The server launches the replacement
+//     at the notice. AWS's earlier REBALANCE hint is passed on too: the server drains the box and launches ahead.
+//   · A test hook: a file at /home/ubuntu/.reclaim-test saying "reclaim" or "rebalance" plays the notice.
 //   · A FAILED TAKE KEEPS ITS FOLDER (the raw take, the manifest) for diagnosis until the box goes; the key, the
 //     session and the profile are shredded whatever happened.
 //
@@ -103,6 +106,12 @@ async function selfTest() {
 const running = new Map(); // job id → child
 let draining = false;
 let reclaimed = false;
+let rebalanced = false; // AWS's earlier hint: likely to be interrupted; the server launches the replacement and drains this box gently
+let rebalanceSent = false;
+// THE JOB'S SELF-REPORT, for the notice arithmetic: which of ours is still in its dry run (no storyboard yet).
+const jobApis = new Map(); // job id → jobApi
+// A TEST HOOK (2026-10-19, the survival rehearsal): a file that says "reclaim" or "rebalance" plays the notice.
+const RECLAIM_TEST_FILE = process.env.RECLAIM_TEST_FILE || "/home/ubuntu/.reclaim-test";
 const shred = (p) => { try { fs.rmSync(p, { recursive: true, force: true }); } catch { /* best effort */ } };
 
 // THE LOOK FROM THE CLOUD (founder 2026-10-19: the start page is opened behind the scenes the moment it is pasted,
@@ -141,6 +150,7 @@ const runJob = async (claim) => {
   const job = claim.job;
   // The take's own door, with the job's cloud key (what a laptop's listener does with its own key).
   const jobApi = async (body) => { try { const r = await fetch(`${base}/api/recorder/listen`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${claim.key}` }, body: JSON.stringify({ job_id: job.id, ...body }), signal: AbortSignal.timeout(20000) }); return r.ok ? await r.json() : null; } catch { return null; } };
+  jobApis.set(job.id, jobApi);
   if (job.kind === "look") { await runLook(claim, jobApi); return; }
   const dir = path.join(HOME, job.id);
   const rec = path.join(dir, ".recorder");
@@ -172,7 +182,9 @@ const runJob = async (claim) => {
     running.set(job.id, child);
     const code = await new Promise((resolve) => child.on("close", resolve));
     const st = await jobApi({ action: "poll" });
-    if (st && st.status && !["ready", "failed", "cancelled"].includes(st.status)) await jobApi({ action: "event", kind: "failed", payload: { message: code === 0 ? "The demo did not come through — try again" : `The take stopped (exit ${code})` } });
+    // HANDED BACK (2026-10-19): a take we stopped on purpose at the notice is already queued again; nothing to report.
+    if (st && st.status === "queued") { console.log(`  ${stamp()} job ${job.id} handed back to the queue`); }
+    else if (st && st.status && !["ready", "failed", "cancelled"].includes(st.status)) await jobApi({ action: "event", kind: "failed", payload: { message: code === 0 ? "The demo did not come through — try again" : `The take stopped (exit ${code})` } });
     finalStatus = st?.status ?? null;
     console.log(`  ■ ${stamp()} job ${job.id} ${st?.status ?? "ended"} in ${Math.round((Date.now() - t0) / 1000)} s\n`);
   } catch (e) {
@@ -206,12 +218,31 @@ let first = true;
 let lastReclaimLook = 0;
 for (;;) {
   // THE TWO-MINUTE NOTICE, looked for every five seconds (the metadata answers 404 until AWS decides).
-  if (!reclaimed && instanceType !== "local" && Date.now() - lastReclaimLook > 5000) {
+  if (!reclaimed && Date.now() - lastReclaimLook > 5000) {
     lastReclaimLook = Date.now();
-    const action = await imds("spot/instance-action");
-    if (action) { reclaimed = true; draining = true; console.log(`  ${stamp()} reclaim notice from AWS: ${action.slice(0, 120)}; no new takes, ${running.size} still running`); }
+    let test = ""; try { test = fs.readFileSync(RECLAIM_TEST_FILE, "utf8").trim().toLowerCase(); } catch { /* no test */ }
+    const action = instanceType !== "local" ? await imds("spot/instance-action") : null;
+    if (action || test === "reclaim") {
+      reclaimed = true; draining = true;
+      console.log(`  ${stamp()} reclaim notice${action ? ` from AWS: ${action.slice(0, 120)}` : " (test)"}; no new takes, ${running.size} still running`);
+      // THE NOTICE ARITHMETIC (founder 2026-10-19): a take still in its dry run is handed back at once — the next box
+      // starts it with the minutes we would have wasted here; a take that is filming or saving finishes (it fits).
+      for (const [id, child] of running) {
+        const jobApi = jobApis.get(id); if (!jobApi) continue;
+        const st = await jobApi({ action: "poll" });
+        if (st && (st.status === "running" || st.status === "queued")) {
+          const r = await jobApi({ action: "event", kind: "requeued", payload: { why: "the cloud box got its two-minute notice during the dry run" } });
+          if (r && r.status === "queued") { console.log(`  ${stamp()} job ${id}: dry run cut short, handed back`); try { process.kill(process.platform === "win32" ? child.pid : -child.pid, "SIGTERM"); } catch { /* gone */ } }
+        } else console.log(`  ${stamp()} job ${id}: ${st?.status ?? "?"}, finishing here`);
+      }
+    } else if (!rebalanced) {
+      const hint = instanceType !== "local" ? await imds("events/recommendations/rebalance") : null;
+      if (hint || test === "rebalance") { rebalanced = true; console.log(`  ${stamp()} rebalance hint${hint ? ` from AWS: ${hint.slice(0, 120)}` : " (test)"}; the server will drain this box and launch its replacement`); }
+    }
   }
-  const r = await api({ action: "checkin", busy: [...running.keys()], draining, ...(first ? { selftest } : {}), ...(reclaimed ? { reclaim: true } : {}) });
+  const sendRebalance = rebalanced && !rebalanceSent;
+  const r = await api({ action: "checkin", busy: [...running.keys()], draining, ...(first ? { selftest } : {}), ...(reclaimed ? { reclaim: true } : {}), ...(sendRebalance ? { rebalance: true } : {}) });
+  if (r && sendRebalance) rebalanceSent = true;
   if (r) first = false;
   if (r?.drain && !draining) { draining = true; console.log(`  ${stamp()} drain: no new takes; ${running.size} still running`); }
   if (r?.stop && running.size === 0) { console.log(`  ${stamp()} stop: the pool says goodbye`); process.exit(0); }
