@@ -66,14 +66,14 @@ Before installing:
 Run these commands from your project directory:
 
 ```bash
-# Install the skill and check your setup.
+# Install the skill and check your setup (the first run on a machine).
 npx demobite@latest
 
 # Connect this project to your DemoBites workspace.
-npx demobite login
+demobite login
 ```
 
-The installer installs Playwright, ffmpeg and ffprobe beside the skill if they are not already there. It uses your own ffmpeg when a compatible build is on your PATH. It checks for Chrome and downloads Chromium on the first take if Chrome is missing.
+From then on, bare `demobite` prints the commands and whether this machine is connected; `demobite setup` checks and installs everything again (Chrome, the encoder, the skill) whenever you want. The setup installs Playwright, ffmpeg and ffprobe beside the skill if they are not already there. It uses your own ffmpeg when a compatible build is on your PATH. It checks for Chrome and downloads Chromium on the first take if Chrome is missing.
 
 To connect, open the link printed in your terminal and approve the connection in your browser. If you are signed out of DemoBites, sign in there first. You do not paste a password into the terminal.
 
@@ -189,7 +189,7 @@ The default installer also attempts to register that MCP with Claude Code when t
 | `skill/` | Studio-connected recorder instructions, login, upload, and Retake. |
 | `scripts/` | Shared browser recording, trimming, and timing calibration. |
 
-The same package is published under three names, `demobite`, `agentic-recorder` and `demobites`, always at the same version; `npx agentic-recorder@latest` and `npx demobites@latest` do exactly what `npx demobite@latest` does. Run it again to update the installed skill. For publishing instructions, see [RELEASING.md](RELEASING.md).
+The same package is published under three names, `demobite`, `agentic-recorder` and `demobites`, always at the same version; `npx agentic-recorder@latest` and `npx demobites@latest` do exactly what `npx demobite@latest` does. `demobite setup` updates the installed skill; bare `demobite` prints the commands. For publishing instructions, see [RELEASING.md](RELEASING.md).
 
 Found something confusing or have an example to share? [Open an issue](https://github.com/demobites/agentic-recorder/issues). Include your operating system, agent, and recorder version. Remove keys, cookies, and private app data from logs or recordings before attaching them.
 

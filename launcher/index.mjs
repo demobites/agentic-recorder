@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // demobite — connect DemoBites to your agent, one command away.
 //
-//   npx demobite@latest            full setup: checks, recorder skill, MCP
+//   demobite                       THE MAP (1.48.0, founder 2026-10-29): the commands, like git/gh/claude;
+//                                  on a fresh machine (no skill yet) it runs the setup once instead
+//   demobite help | --help | -h    the map, always; never a check, never an install
+//   demobite setup                 full setup: checks, recorder skill, encoder, MCP — re-runnable
 //   npx demobite@latest login      connect this machine to DemoBites
 //   npx demobite@latest mcp        register the DemoBites management MCP
 //   npx demobite@latest logout     disconnect (revokes the key server-side)
@@ -91,21 +94,37 @@ const killListener = () => {
   if (lock?.pid && pidAlive(lock.pid)) { try { process.kill(lock.pid, "SIGTERM"); } catch { /* gone */ } return lock.pid; }
   return null;
 };
-const printStatus = () => {
+// The facts `status` and the map both read: the lock (is a listener alive, is it the service), the
+// last check-in's state (name, base), and before the first check-in, the key's own config.
+const connection = () => {
   const lock = readJson(LOCK);
   const live = !!(lock?.pid && pidAlive(lock.pid));
-  // the facts come from the last check-in; before the first one, from the key's own config
   const cfgThere = lock?.cwd ? readJson(path.join(lock.cwd, ".recorder", "config.json")) : null;
   const st = { base: cfgThere?.base ?? null, workspace: cfgThere?.workspace?.name ?? null, ...(readJson(STATE) ?? {}) };
+  return { lock, live, st, name: st?.name ?? os.hostname().replace(/\.local$/, ""), host: (st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com", user: st?.user ?? null };
+};
+// The person behind the key, as the last check-in named them: "email (name)"; null before the app has said.
+const whoLine = (user) => (user?.email ? `${user.email}${user.name ? ` (${user.name})` : ""}` : null);
+const printStatus = () => {
+  const { lock, live, st, name, host, user } = connection();
+  const who = whoLine(user);
+  const rows = [];
   if (live) {
-    console.log(`  ● Connected as "${st?.name ?? os.hostname().replace(/\.local$/, "")}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${(st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com"}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"}) · v${readJson(UPDATE)?.to ?? pkg.version}`);
-    if (st?.at) console.log(`    last check-in ${ago(st.at)} · ${st.busy ? `recording: ${st.job ?? ""}` : "idle"}${st.last_error ? ` · last error: ${st.last_error}` : ""}`);
-    console.log(`    working in ${lock.cwd.replace(os.homedir(), "~")}${lock.repo ? ` · code: ${lock.repo}` : ""}`);
+    console.log(`  ● Connected${who ? ` as ${who}` : ""}`);
+    rows.push(["product", st?.workspace ? `"${st.workspace}"` : "(the app has not said yet)"]);
+    rows.push(["server", host]);
+    rows.push(["machine", `"${name}" · since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · v${readJson(UPDATE)?.to ?? pkg.version}`]);
+    if (st?.at) rows.push(["last check-in", `${ago(st.at)} · ${st.busy ? `recording: ${st.job ?? ""}` : "idle"}${st.last_error ? ` · last error: ${st.last_error}` : ""}`]);
+    rows.push(["working in", `${lock.cwd.replace(os.homedir(), "~")}${lock.repo ? ` · code: ${lock.repo}` : ""}`]);
   } else {
-    console.log(`  ○ Not connected.${st?.at ? ` Last check-in ${ago(st.at)}.` : ""}`);
+    console.log(`  ○ Not connected${st?.at ? ` · last check-in ${ago(st.at)}` : ""}`);
+    if (st?.workspace) rows.push(["product", `"${st.workspace}"`]);
+    rows.push(["server", host]);
   }
-  console.log(`    login service: ${serviceInstalled() ? "installed (starts at login, restarts if it dies)" : "not installed"} · run: demobite ${live ? "off" : "on"}`);
-  console.log(`    log: ${LOG.replace(os.homedir(), "~")}`);
+  rows.push(["listener", `${lock?.service && live ? "login service" : live ? "a Terminal window" : "off"} · ${serviceInstalled() ? "installed (starts at login, restarts if it dies)" : "not installed"} · run: demobite ${live ? "off" : "on"}`]);
+  rows.push(["log", LOG.replace(os.homedir(), "~")]);
+  const w = Math.max(...rows.map(([k]) => k.length));
+  for (const [k, v] of rows) console.log(`    - ${k.padEnd(w)}  ${v}`);
 };
 if (arg === "--version" || arg === "-v" || arg === "version") { console.log(pkg.version); process.exit(0); }
 if (arg === "status" && !process.argv[3]) { printStatus(); process.exit(0); }
@@ -167,6 +186,42 @@ if (arg === "off") {
   process.exit(0);
 }
 
+// ── THE MAP (1.48.0, founder 2026-10-29: "every CLI prints a map of its commands on a bare call") ──
+// Bare `demobite` on an installed machine, and `help`: the commands and one status line, from the facts
+// `status` reads. Nothing is checked, copied, installed or registered here; that is `demobite setup`'s
+// word (and bare's, once, on a machine with no skill yet). Never the pid or the log path: `status` has them.
+const printMap = () => {
+  const { lock, live, st, name, host, user } = connection();
+  const who = whoLine(user);
+  const status = live
+    ? `● Connected as ${who ?? `"${name}"`}${st?.workspace ? ` · "${st.workspace}"` : ""} on ${host} · listener on (${lock.service ? "login service" : "a Terminal window"})`
+    : "○ Not connected. Run the install line from the app's Terminal tab, or: demobite login";
+  console.log(`demobite v${pkg.version} — the DemoBites agentic recorder
+  ${status}
+
+Record
+  demobite record <code>    Film the briefs behind an Update Radar code
+  demobite retake <biteId>  Film a bite again
+
+Connect
+  demobite login · logout   Link this project to your DemoBites account
+  demobite on · off         Start or stop the listener
+  demobite status · logs    What the listener is doing
+  demobite mcp              Let your coding agent manage DemoBites
+  demobite repo <site>      Where the app's code lives on this machine
+
+Setup
+  demobite setup            Check and install everything (Chrome, encoder, skill)
+
+Or ask your coding agent: "Record a demo of <your flow> and upload it to DemoBites"
+demobite <command> --help explains one command.`);
+};
+const skillInstalled = fs.existsSync(path.join(dest, "SKILL.md"));
+if (arg === "help" || arg === "--help" || arg === "-h" || (arg === "" && skillInstalled)) { printMap(); process.exit(0); }
+// A word the launcher does not know never falls into the setup path (it used to): the map, exit 2.
+const KNOWN = new Set(["", "setup", "record", "retake", "login", "logout", "on", "off", "status", "logs", "mcp", "repo", "listen", "pool", "briefs", "rules", "agentic-recorder"]);
+if (!KNOWN.has(arg)) { console.error(`Unknown command: ${arg}\n`); printMap(); process.exit(2); }
+
 console.log(`\ndemobite v${pkg.version} — the DemoBites agentic recorder\n`);
 
 // ── 0. record <code> (UPDATE RADAR, 1.6.0) ─────────────────────────────────
@@ -227,6 +282,8 @@ the demos arrive there.
 }
 
 // ── 1. Environment checks ──────────────────────────────────────────────────
+// THE SETUP PATH (2026-10-29): `demobite setup`, re-runnable any time, and bare `demobite` once, on a
+// machine with no skill yet. The sub-commands below it still pass through here, as before.
 const nodeMajor = Number(process.versions.node.split(".")[0]);
 if (nodeMajor >= 18) ok(`Node ${process.versions.node}`);
 else { warn(`Node ${process.versions.node} — 18+ required`); process.exit(1); }
@@ -508,7 +565,7 @@ if (arg === "listen") {
     return m ? m[1] : null;
   })();
   writeJson(LOCK, { pid: process.pid, since: new Date().toISOString(), cwd: process.cwd(), service: SERVICE, repo });
-  const noteState = (extra) => writeJson(STATE, { at: new Date().toISOString(), machine_id: listen.machine_id, name, base, workspace: cfg.workspace?.name ?? null, ...extra });
+  const noteState = (extra) => { const prev = readJson(STATE) ?? {}; writeJson(STATE, { at: new Date().toISOString(), machine_id: listen.machine_id, name, base, workspace: prev.workspace ?? cfg.workspace?.name ?? null, user: prev.user ?? null, ...extra }); };
   // PERSONAS (1.27.0, founder 2026-10-17: "the same domain, but three different users sign in, so three tabs"):
   // a tab's jobs run in the tab's own Chrome profile, seeded once from the machine's profile (so what was
   // signed in stays), with its own ledger. The server names the profile on the job ("t12"); none = the machine's.
@@ -554,8 +611,14 @@ if (arg === "listen") {
     try {
       const res = await fetch(`${base}/api/recorder/listen`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.api_key}` }, body: JSON.stringify(body) });
       if (res.status === 401) { console.error("\n  The recorder key was refused. Run: demobite login"); noteState({ busy: false, last_error: "the recorder key was refused" }); process.exit(1); }
-      if (body.action === "checkin") noteState({ busy: !!body.busy, job: body.busy ? (readJson(STATE)?.job ?? null) : null, last_error: res.ok ? null : `the app answered ${res.status}` });
-      return res.ok ? await res.json() : null;
+      const answer = res.ok ? await res.json().catch(() => null) : null;
+      if (body.action === "checkin") {
+        const fresh = {};
+        if (answer?.workspace?.name) fresh.workspace = answer.workspace.name;
+        if (answer?.who?.email) fresh.user = { email: answer.who.email, name: answer.who.name ?? null };
+        noteState({ busy: !!body.busy, job: body.busy ? (readJson(STATE)?.job ?? null) : null, last_error: res.ok ? null : `the app answered ${res.status}`, ...fresh });
+      }
+      return answer;
     } catch (e) { if (body.action === "checkin") noteState({ busy: !!body.busy, last_error: String(e?.message ?? e).slice(0, 120) }); return null; }
   };
   const event = (job_id, kind, payload) => api({ action: "event", job_id, kind, payload });
@@ -614,7 +677,7 @@ if (arg === "listen") {
   }
   const settled = () => { if (!selfUpdating) return; if (fs.existsSync(UPDATE)) { fs.rmSync(UPDATE, { force: true }); fs.rmSync(PKG_DIR + ".prev", { recursive: true, force: true }); console.log(`  ${new Date().toISOString()} update: ${pkg.version} is in and checked in`); } };
 
-  console.log(`\n  Connected as "${name}" for ${cfg.workspace?.name ?? "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
+  console.log(`\n  Connected as "${name}" for ${cfg.workspace?.name ? `"${cfg.workspace.name}"` : "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
   console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${engine === "claude" ? (agentBin ? `Claude Code${agentInfo.agent_version ? " " + agentInfo.agent_version : ""} plans the demos, on your own plan; they film on ${JOB_MODEL} unless you pick another model in the app.` : "! --engine=claude, but Claude Code was not found on this machine.") : `Demos are planned by the DemoBites agent on ${JOB_MODEL} (pick another model in the app)${process.env.DEMOBITES_NO_CODE ? "; code sharing is off" : repo ? "; the files it reads from this project are logged in each take" : ""}.`}`);
   // The one thing the person must know, boxed (founder 2026-10-15): this
   // window is the machine's side of every recording. The login service has no window: one line instead.
@@ -923,20 +986,10 @@ Publishing always shows you a preview to approve first.
   process.exit(0);
 }
 
-// ── 4. Handoff ─────────────────────────────────────────────────────────────
-// Bare invocation (and the `agentic-recorder` docs alias): if this project is
-// already linked, quietly wire the MCP too — one command, both magics.
+// ── 4. Done ────────────────────────────────────────────────────────────────
+// The end of the setup path (`demobite setup`, and bare on a fresh machine): if this project is
+// already linked, quietly wire the MCP too — one command, both magics. Then one line (founder
+// 2026-10-29: the lecture is gone; the one agent line lives in the map's footer).
 const cfg = readCfg();
 if (cfg?.api_key) registerMcp(cfg, { quiet: true });
-console.log(`
-Ready. Everything is agent-driven — open your coding agent (Claude Code,
-Cursor, Codex) in your project and ask:
-
-    "Record a demo of <your flow> and upload it to DemoBites"
-    "Create a release with my latest bites and add Spanish"
-
-Before the first demo it connects this project to your DemoBites account —
-one link to approve in your browser (or run now: npx demobite login).
-Manage-by-agent needs the MCP: npx demobite mcp (once, after login).
-Only the recorder, no DemoBites? See the open recorder in this package's repo.
-`);
+console.log("\nEverything is in place. Run demobite for the commands.\n");
