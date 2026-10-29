@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // demobite — connect DemoBites to your agent, one command away.
 //
-//   npx demobite@latest            full setup: checks, recorder skill, MCP
+//   demobite                       THE MAP (1.48.0, founder 2026-10-29): the commands, like git/gh/claude;
+//                                  on a fresh machine (no skill yet) it runs the setup once instead
+//   demobite help | --help | -h    the map, always; never a check, never an install
+//   demobite setup                 full setup: checks, recorder skill, encoder, MCP — re-runnable
 //   npx demobite@latest login      connect this machine to DemoBites
 //   npx demobite@latest mcp        register the DemoBites management MCP
 //   npx demobite@latest logout     disconnect (revokes the key server-side)
@@ -91,14 +94,19 @@ const killListener = () => {
   if (lock?.pid && pidAlive(lock.pid)) { try { process.kill(lock.pid, "SIGTERM"); } catch { /* gone */ } return lock.pid; }
   return null;
 };
-const printStatus = () => {
+// The facts `status` and the map both read: the lock (is a listener alive, is it the service), the
+// last check-in's state (name, base), and before the first check-in, the key's own config.
+const connection = () => {
   const lock = readJson(LOCK);
   const live = !!(lock?.pid && pidAlive(lock.pid));
-  // the facts come from the last check-in; before the first one, from the key's own config
   const cfgThere = lock?.cwd ? readJson(path.join(lock.cwd, ".recorder", "config.json")) : null;
   const st = { base: cfgThere?.base ?? null, workspace: cfgThere?.workspace?.name ?? null, ...(readJson(STATE) ?? {}) };
+  return { lock, live, st, name: st?.name ?? os.hostname().replace(/\.local$/, ""), host: (st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com" };
+};
+const printStatus = () => {
+  const { lock, live, st, name, host } = connection();
   if (live) {
-    console.log(`  ● Connected as "${st?.name ?? os.hostname().replace(/\.local$/, "")}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${(st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com"}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"}) · v${readJson(UPDATE)?.to ?? pkg.version}`);
+    console.log(`  ● Connected as "${name}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${host}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"}) · v${readJson(UPDATE)?.to ?? pkg.version}`);
     if (st?.at) console.log(`    last check-in ${ago(st.at)} · ${st.busy ? `recording: ${st.job ?? ""}` : "idle"}${st.last_error ? ` · last error: ${st.last_error}` : ""}`);
     console.log(`    working in ${lock.cwd.replace(os.homedir(), "~")}${lock.repo ? ` · code: ${lock.repo}` : ""}`);
   } else {
@@ -167,6 +175,42 @@ if (arg === "off") {
   process.exit(0);
 }
 
+// ── THE MAP (1.48.0, founder 2026-10-29: "every CLI prints a map of its commands on a bare call") ──
+// Bare `demobite` on an installed machine, and `help`: the commands and one status line, from the facts
+// `status` reads. Nothing is checked, copied, installed or registered here; that is `demobite setup`'s
+// word (and bare's, once, on a machine with no skill yet). Never the pid or the log path: `status` has them.
+const printMap = () => {
+  const { lock, live, name, host } = connection();
+  const status = live
+    ? `● Connected as "${name}" · on ${host} · listener on (${lock.service ? "login service" : "a Terminal window"})`
+    : "○ Not connected. Run the install line from the app's Terminal tab, or: demobite login";
+  console.log(`demobite v${pkg.version} — the DemoBites agentic recorder
+  ${status}
+
+Record
+  demobite rec              Record this terminal as a demo
+  demobite record <code>    Film the briefs behind an Update Radar code
+  demobite retake <biteId>  Film a bite again
+
+Connect
+  demobite login · logout   Link this project to your DemoBites account
+  demobite on · off         Start or stop the listener
+  demobite status · logs    What the listener is doing
+  demobite mcp              Let your coding agent manage DemoBites
+  demobite repo <site>      Where the app's code lives on this machine
+
+Setup
+  demobite setup            Check and install everything (Chrome, encoder, skill)
+
+Or ask your coding agent: "Record a demo of <your flow> and upload it to DemoBites"
+demobite <command> --help explains one command.`);
+};
+const skillInstalled = fs.existsSync(path.join(dest, "SKILL.md"));
+if (arg === "help" || arg === "--help" || arg === "-h" || (arg === "" && skillInstalled)) { printMap(); process.exit(0); }
+// A word the launcher does not know never falls into the setup path (it used to): the map, exit 2.
+const KNOWN = new Set(["", "setup", "rec", "record", "retake", "login", "logout", "on", "off", "status", "logs", "mcp", "repo", "listen", "pool", "briefs", "rules", "agentic-recorder"]);
+if (!KNOWN.has(arg)) { console.error(`Unknown command: ${arg}\n`); printMap(); process.exit(2); }
+
 console.log(`\ndemobite v${pkg.version} — the DemoBites agentic recorder\n`);
 
 // ── 0. record <code> (UPDATE RADAR, 1.6.0) ─────────────────────────────────
@@ -227,6 +271,8 @@ the demos arrive there.
 }
 
 // ── 1. Environment checks ──────────────────────────────────────────────────
+// THE SETUP PATH (2026-10-29): `demobite setup`, re-runnable any time, and bare `demobite` once, on a
+// machine with no skill yet. The sub-commands below it still pass through here, as before.
 const nodeMajor = Number(process.versions.node.split(".")[0]);
 if (nodeMajor >= 18) ok(`Node ${process.versions.node}`);
 else { warn(`Node ${process.versions.node} — 18+ required`); process.exit(1); }
@@ -923,20 +969,10 @@ Publishing always shows you a preview to approve first.
   process.exit(0);
 }
 
-// ── 4. Handoff ─────────────────────────────────────────────────────────────
-// Bare invocation (and the `agentic-recorder` docs alias): if this project is
-// already linked, quietly wire the MCP too — one command, both magics.
+// ── 4. Done ────────────────────────────────────────────────────────────────
+// The end of the setup path (`demobite setup`, and bare on a fresh machine): if this project is
+// already linked, quietly wire the MCP too — one command, both magics. Then one line (founder
+// 2026-10-29: the lecture is gone; the one agent line lives in the map's footer).
 const cfg = readCfg();
 if (cfg?.api_key) registerMcp(cfg, { quiet: true });
-console.log(`
-Ready. Everything is agent-driven — open your coding agent (Claude Code,
-Cursor, Codex) in your project and ask:
-
-    "Record a demo of <your flow> and upload it to DemoBites"
-    "Create a release with my latest bites and add Spanish"
-
-Before the first demo it connects this project to your DemoBites account —
-one link to approve in your browser (or run now: npx demobite login).
-Manage-by-agent needs the MCP: npx demobite mcp (once, after login).
-Only the recorder, no DemoBites? See the open recorder in this package's repo.
-`);
+console.log("\nEverything is in place. Run demobite for the commands.\n");
