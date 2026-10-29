@@ -43,3 +43,23 @@ test("bare demobite on an installed machine prints the map, writes nothing", () 
   isMap(r.stdout);
   assert.deepEqual(walk(home), [skill], "only the skill file we planted is there");
 });
+
+test("demobite status prints one fact per row, the user and the fresh product name", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "demobite-status-"));
+  fs.writeFileSync(path.join(home, "listen.lock"), JSON.stringify({ pid: process.pid, since: "2026-10-29T00:00:00.000Z", cwd: home, service: true }));
+  fs.writeFileSync(path.join(home, "state.json"), JSON.stringify({ at: new Date().toISOString(), name: "MacBook-Air-6", base: "https://dev.demobites.com", workspace: "Vision Defense", user: { email: "shai.wolkomir@gmail.com", name: "Shai Wolkomir" }, busy: false }));
+  const r = run(home, "status");
+  assert.equal(r.status, 0, r.stderr);
+  const out = r.stdout;
+  assert.match(out, /^  ● Connected as shai\.wolkomir@gmail\.com \(Shai Wolkomir\)$/m);
+  assert.match(out, /^    - product\s+"Vision Defense"$/m);
+  assert.match(out, /^    - server\s+dev\.demobites\.com$/m);
+  assert.match(out, /^    - machine\s+"MacBook-Air-6" · since .* · v\d+\.\d+\.\d+$/m);
+  assert.match(out, /^    - last check-in\s+\d+ s ago · idle$/m);
+  assert.match(out, /^    - listener\s+login service · /m);
+  assert.match(out, /^    - log\s+/m);
+  for (const line of out.split("\n").slice(1).filter(Boolean)) assert.match(line, /^    - /, `every fact on its own dashed row: ${line}`);
+  // the map's own line reads the same facts
+  const m = run(home, "help").stdout;
+  assert.match(m, /^  ● Connected as shai\.wolkomir@gmail\.com \(Shai Wolkomir\) · "Vision Defense" on dev\.demobites\.com · listener on \(login service\)$/m);
+});

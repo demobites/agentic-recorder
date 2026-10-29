@@ -101,19 +101,30 @@ const connection = () => {
   const live = !!(lock?.pid && pidAlive(lock.pid));
   const cfgThere = lock?.cwd ? readJson(path.join(lock.cwd, ".recorder", "config.json")) : null;
   const st = { base: cfgThere?.base ?? null, workspace: cfgThere?.workspace?.name ?? null, ...(readJson(STATE) ?? {}) };
-  return { lock, live, st, name: st?.name ?? os.hostname().replace(/\.local$/, ""), host: (st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com" };
+  return { lock, live, st, name: st?.name ?? os.hostname().replace(/\.local$/, ""), host: (st?.base ?? "").replace(/^https?:\/\//, "") || "app.demobites.com", user: st?.user ?? null };
 };
+// The person behind the key, as the last check-in named them: "email (name)"; null before the app has said.
+const whoLine = (user) => (user?.email ? `${user.email}${user.name ? ` (${user.name})` : ""}` : null);
 const printStatus = () => {
-  const { lock, live, st, name, host } = connection();
+  const { lock, live, st, name, host, user } = connection();
+  const who = whoLine(user);
+  const rows = [];
   if (live) {
-    console.log(`  ● Connected as "${name}" since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · for ${st?.workspace ?? "your workspace"} on ${host}  (pid ${lock.pid}${lock.service ? ", login service" : ", a Terminal window"}) · v${readJson(UPDATE)?.to ?? pkg.version}`);
-    if (st?.at) console.log(`    last check-in ${ago(st.at)} · ${st.busy ? `recording: ${st.job ?? ""}` : "idle"}${st.last_error ? ` · last error: ${st.last_error}` : ""}`);
-    console.log(`    working in ${lock.cwd.replace(os.homedir(), "~")}${lock.repo ? ` · code: ${lock.repo}` : ""}`);
+    console.log(`  ● Connected${who ? ` as ${who}` : ""}`);
+    rows.push(["product", st?.workspace ? `"${st.workspace}"` : "(the app has not said yet)"]);
+    rows.push(["server", host]);
+    rows.push(["machine", `"${name}" · since ${new Date(lock.since).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })} · v${readJson(UPDATE)?.to ?? pkg.version}`]);
+    if (st?.at) rows.push(["last check-in", `${ago(st.at)} · ${st.busy ? `recording: ${st.job ?? ""}` : "idle"}${st.last_error ? ` · last error: ${st.last_error}` : ""}`]);
+    rows.push(["working in", `${lock.cwd.replace(os.homedir(), "~")}${lock.repo ? ` · code: ${lock.repo}` : ""}`]);
   } else {
-    console.log(`  ○ Not connected.${st?.at ? ` Last check-in ${ago(st.at)}.` : ""}`);
+    console.log(`  ○ Not connected${st?.at ? ` · last check-in ${ago(st.at)}` : ""}`);
+    if (st?.workspace) rows.push(["product", `"${st.workspace}"`]);
+    rows.push(["server", host]);
   }
-  console.log(`    login service: ${serviceInstalled() ? "installed (starts at login, restarts if it dies)" : "not installed"} · run: demobite ${live ? "off" : "on"}`);
-  console.log(`    log: ${LOG.replace(os.homedir(), "~")}`);
+  rows.push(["listener", `${lock?.service && live ? "login service" : live ? "a Terminal window" : "off"} · ${serviceInstalled() ? "installed (starts at login, restarts if it dies)" : "not installed"} · run: demobite ${live ? "off" : "on"}`]);
+  rows.push(["log", LOG.replace(os.homedir(), "~")]);
+  const w = Math.max(...rows.map(([k]) => k.length));
+  for (const [k, v] of rows) console.log(`    - ${k.padEnd(w)}  ${v}`);
 };
 if (arg === "--version" || arg === "-v" || arg === "version") { console.log(pkg.version); process.exit(0); }
 if (arg === "status" && !process.argv[3]) { printStatus(); process.exit(0); }
@@ -180,9 +191,10 @@ if (arg === "off") {
 // `status` reads. Nothing is checked, copied, installed or registered here; that is `demobite setup`'s
 // word (and bare's, once, on a machine with no skill yet). Never the pid or the log path: `status` has them.
 const printMap = () => {
-  const { lock, live, name, host } = connection();
+  const { lock, live, st, name, host, user } = connection();
+  const who = whoLine(user);
   const status = live
-    ? `● Connected as "${name}" · on ${host} · listener on (${lock.service ? "login service" : "a Terminal window"})`
+    ? `● Connected as ${who ?? `"${name}"`}${st?.workspace ? ` · "${st.workspace}"` : ""} on ${host} · listener on (${lock.service ? "login service" : "a Terminal window"})`
     : "○ Not connected. Run the install line from the app's Terminal tab, or: demobite login";
   console.log(`demobite v${pkg.version} — the DemoBites agentic recorder
   ${status}
@@ -553,7 +565,7 @@ if (arg === "listen") {
     return m ? m[1] : null;
   })();
   writeJson(LOCK, { pid: process.pid, since: new Date().toISOString(), cwd: process.cwd(), service: SERVICE, repo });
-  const noteState = (extra) => writeJson(STATE, { at: new Date().toISOString(), machine_id: listen.machine_id, name, base, workspace: cfg.workspace?.name ?? null, ...extra });
+  const noteState = (extra) => { const prev = readJson(STATE) ?? {}; writeJson(STATE, { at: new Date().toISOString(), machine_id: listen.machine_id, name, base, workspace: prev.workspace ?? cfg.workspace?.name ?? null, user: prev.user ?? null, ...extra }); };
   // PERSONAS (1.27.0, founder 2026-10-17: "the same domain, but three different users sign in, so three tabs"):
   // a tab's jobs run in the tab's own Chrome profile, seeded once from the machine's profile (so what was
   // signed in stays), with its own ledger. The server names the profile on the job ("t12"); none = the machine's.
@@ -599,8 +611,14 @@ if (arg === "listen") {
     try {
       const res = await fetch(`${base}/api/recorder/listen`, { method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.api_key}` }, body: JSON.stringify(body) });
       if (res.status === 401) { console.error("\n  The recorder key was refused. Run: demobite login"); noteState({ busy: false, last_error: "the recorder key was refused" }); process.exit(1); }
-      if (body.action === "checkin") noteState({ busy: !!body.busy, job: body.busy ? (readJson(STATE)?.job ?? null) : null, last_error: res.ok ? null : `the app answered ${res.status}` });
-      return res.ok ? await res.json() : null;
+      const answer = res.ok ? await res.json().catch(() => null) : null;
+      if (body.action === "checkin") {
+        const fresh = {};
+        if (answer?.workspace?.name) fresh.workspace = answer.workspace.name;
+        if (answer?.who?.email) fresh.user = { email: answer.who.email, name: answer.who.name ?? null };
+        noteState({ busy: !!body.busy, job: body.busy ? (readJson(STATE)?.job ?? null) : null, last_error: res.ok ? null : `the app answered ${res.status}`, ...fresh });
+      }
+      return answer;
     } catch (e) { if (body.action === "checkin") noteState({ busy: !!body.busy, last_error: String(e?.message ?? e).slice(0, 120) }); return null; }
   };
   const event = (job_id, kind, payload) => api({ action: "event", job_id, kind, payload });
@@ -659,7 +677,7 @@ if (arg === "listen") {
   }
   const settled = () => { if (!selfUpdating) return; if (fs.existsSync(UPDATE)) { fs.rmSync(UPDATE, { force: true }); fs.rmSync(PKG_DIR + ".prev", { recursive: true, force: true }); console.log(`  ${new Date().toISOString()} update: ${pkg.version} is in and checked in`); } };
 
-  console.log(`\n  Connected as "${name}" for ${cfg.workspace?.name ?? "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
+  console.log(`\n  Connected as "${name}" for ${cfg.workspace?.name ? `"${cfg.workspace.name}"` : "your workspace"} on ${base.replace(/^https?:\/\//, "")}.`);
   console.log(`  Ask for a demo in the app (Create → Agentic Capture). ${engine === "claude" ? (agentBin ? `Claude Code${agentInfo.agent_version ? " " + agentInfo.agent_version : ""} plans the demos, on your own plan; they film on ${JOB_MODEL} unless you pick another model in the app.` : "! --engine=claude, but Claude Code was not found on this machine.") : `Demos are planned by the DemoBites agent on ${JOB_MODEL} (pick another model in the app)${process.env.DEMOBITES_NO_CODE ? "; code sharing is off" : repo ? "; the files it reads from this project are logged in each take" : ""}.`}`);
   // The one thing the person must know, boxed (founder 2026-10-15): this
   // window is the machine's side of every recording. The login service has no window: one line instead.
