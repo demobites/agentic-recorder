@@ -188,7 +188,6 @@ const printMap = () => {
   ${status}
 
 Record
-  demobite rec              Record this terminal as a demo
   demobite record <code>    Film the briefs behind an Update Radar code
   demobite retake <biteId>  Film a bite again
 
@@ -208,7 +207,7 @@ demobite <command> --help explains one command.`);
 const skillInstalled = fs.existsSync(path.join(dest, "SKILL.md"));
 if (arg === "help" || arg === "--help" || arg === "-h" || (arg === "" && skillInstalled)) { printMap(); process.exit(0); }
 // A word the launcher does not know never falls into the setup path (it used to): the map, exit 2.
-const KNOWN = new Set(["", "setup", "rec", "record", "retake", "login", "logout", "on", "off", "status", "logs", "mcp", "repo", "listen", "pool", "briefs", "rules", "agentic-recorder"]);
+const KNOWN = new Set(["", "setup", "record", "retake", "login", "logout", "on", "off", "status", "logs", "mcp", "repo", "listen", "pool", "briefs", "rules", "agentic-recorder"]);
 if (!KNOWN.has(arg)) { console.error(`Unknown command: ${arg}\n`); printMap(); process.exit(2); }
 
 console.log(`\ndemobite v${pkg.version} — the DemoBites agentic recorder\n`);

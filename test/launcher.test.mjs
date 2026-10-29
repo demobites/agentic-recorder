@@ -15,7 +15,7 @@ const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =
 const isMap = (out) => {
   assert.match(out, /^demobite v\d+\.\d+\.\d+ — the DemoBites agentic recorder\n/);
   for (const header of ["\nRecord\n", "\nConnect\n", "\nSetup\n"]) assert.ok(out.includes(header), `section ${header.trim()}`);
-  assert.match(out, /^  demobite rec\s+Record this terminal as a demo$/m);
+  assert.match(out, /^  demobite record <code>\s+Film the briefs behind an Update Radar code$/m);
   assert.match(out, /^  demobite setup\s+Check and install everything/m);
   assert.match(out, /^  ○ Not connected\. Run the install line from the app's Terminal tab, or: demobite login$/m);
   assert.ok(!out.includes("✓"), "no installer checks");
